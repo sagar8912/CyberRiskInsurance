@@ -94,9 +94,19 @@ def supervisor_node(state: CyberRiskState) -> Dict[str, Any]:
     if expected_domain is None:
         expected_domain = f"{name.lower().replace(' ', '')}.com"
         
+    domain_aliases = {
+        "tcs": "tcs.com",
+        "tata consultancy services": "tcs.com"
+    }
+        
     # Heuristic: if domain provided is completely unrelated to the name and expected domain
     name_slug = name.lower().replace(" ", "")
-    if name_slug not in domain_lower and domain_lower not in expected_domain and not any(part in domain_lower for part in name.lower().split()):
+    
+    if domain_aliases.get(name.lower()) == domain_lower:
+        mismatch_flag = False
+        entity_status = "Match"
+        entity_resolution_confidence = "High"
+    elif name_slug not in domain_lower and domain_lower not in expected_domain and not any(part in domain_lower for part in name.lower().split()):
         mismatch_flag = True
         entity_status = "Mismatch"
         entity_resolution_confidence = "Low"

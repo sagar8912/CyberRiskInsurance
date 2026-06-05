@@ -89,9 +89,12 @@ def underwriter_node(state: CyberRiskState) -> Dict[str, Any]:
     if mismatch or state.get("entity_status") == "Mismatch":
         human_escalation_flag = True
         reasons.append("Supervisor flagged entity mismatch.")
-    if len(conflicts) > 0:
+        
+    claims = state.get("claims_verification", {})
+    actual_contradictions = sum(1 for c in claims.values() if c.get("status") == "[X] Contradicted")
+    if actual_contradictions > 0:
         human_escalation_flag = True
-        reasons.append(f"Active source contradictions detected: {len(conflicts)}")
+        reasons.append(f"Active source contradictions detected: {actual_contradictions}")
         
     if human_escalation_flag:
         logs.append(f"Underwriter Escalation: Human routing triggered! Reasons: {reasons}")

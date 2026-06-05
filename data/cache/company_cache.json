@@ -1,467 +1,419 @@
 {
-  "TechGiant Inc. (techgiant.com)": {
-    "name": "TechGiant Inc.",
-    "domain": "techgiant.com",
-    "risk_category": "Favourable",
-    "underwriting_rationale": {
-      "Mergers and Acquisitions": "M&A points: 8.0 calculated across 2 acquisitions. Revenue tier comparison applied.",
-      "Amount of sensitive information": "Customer type: B2B, E-commerce presence: False.",
-      "Domain Encryption": "HTTPS Encryption: 3 of 3 domains encrypted.",
-      "Geographic Spread": "Operates in 12 countries across 5 continents. USA Presence: True.",
-      "Internet footprint": "Footprint score: 360.0 (domains: 120 x multiplier: 3.0 based on customer scale: Enterprise (10k+)).",
-      "Nature of services": "Cyber sub-industry appetite category is 'low_risk_cyber_saas'.",
-      "Organizational Complexity": "Total subsidiaries: 11 evaluated against revenue tier.",
-      "Privacy Regulation": "Privacy Policy published: True, Compliance frameworks: 4 (GDPR, CCPA, HIPAA, SOC2).",
-      "Seasonality of sales": "Sales seasonality CV: 0.015 calculated from quarterly revenues.",
-      "Volatility/Recovery in Sales": "Dimensions avg: 2.67 (Digital exposure: 2/5, Disruption speed: 3/5, Recovery complexity: 3/5)."
-    },
-    "modifier_scores": {
-      "Mergers and Acquisitions": {
-        "score": 8.0,
-        "rating": "favourable"
-      },
-      "Amount of sensitive information": {
-        "score": 0.0,
-        "rating": "favourable"
-      },
-      "Domain Encryption": {
-        "score": "3/3",
-        "rating": "favourable"
-      },
-      "Geographic Spread": {
-        "score": 12,
-        "rating": "average"
-      },
-      "Internet footprint": {
-        "score": 360.0,
-        "rating": "unfavourable"
-      },
-      "Nature of services": {
-        "score": "low_risk_cyber_saas",
-        "rating": "favourable"
-      },
-      "Organizational Complexity": {
-        "score": 11,
-        "rating": "favourable"
-      },
-      "Privacy Regulation": {
-        "score": 4,
-        "rating": "favourable"
-      },
-      "Seasonality of sales": {
-        "score": 0.015356913446164187,
-        "rating": "favourable"
-      },
-      "Volatility/Recovery in Sales": {
-        "score": 2.6666666666666665,
-        "rating": "average"
-      }
-    },
-    "confidence_score": 100.0,
-    "confidence_band": "High",
-    "accuracy_score": 1.0,
-    "human_escalation_flag": false,
-    "reconciled_profile": {
-      "revenue": 1213000000,
-      "subsidiaries": [
-        "Sub1 Corp",
-        "Sub2 LLC",
-        "Sub3 Ltd",
-        "Sub4 Inc",
-        "Sub5 Co",
-        "Sub6 Corp",
-        "Sub7 LLC",
-        "Sub8 Ltd",
-        "Sub9 Inc",
-        "Sub10 Co",
-        "Sub11 Corp"
-      ],
-      "acquisitions": [
-        {
-          "name": "CloudSecure Ltd",
-          "employee_count_before": 200,
-          "revenue_before": 20000000,
-          "deal_type": "material acquisition",
-          "recency_years": 0.5
-        },
-        {
-          "name": "DataScale Inc",
-          "employee_count_before": 50,
-          "revenue_before": 5000000,
-          "deal_type": "minor acquisition",
-          "recency_years": 3.0
-        }
-      ],
-      "customer_type": "B2B",
-      "has_ecommerce": false,
-      "domains": [
-        {
-          "url": "techgiant.com",
-          "https_encrypted": true
-        },
-        {
-          "url": "techgiant-cloud.com",
-          "https_encrypted": true
-        },
-        {
-          "url": "techgiant-billing.com",
-          "https_encrypted": true
-        }
-      ],
-      "privacy_policy_published": true,
-      "compliance_mentions": [
-        "GDPR",
-        "CCPA",
-        "HIPAA",
-        "SOC2"
-      ],
-      "countries_of_operation": [
-        "USA",
-        "Canada",
-        "UK",
-        "Germany",
-        "France",
-        "Japan",
-        "Australia",
-        "Singapore",
-        "Brazil",
-        "India",
-        "Ireland",
-        "Netherlands"
-      ],
-      "continent_spread": [
-        "North America",
-        "Europe",
-        "Asia",
-        "South America",
-        "Oceania"
-      ],
-      "usa_presence": true,
-      "internet_exposure_domains": 120,
-      "customer_base_scale": "Enterprise (10k+)",
-      "services_appetite": "low_risk_cyber_saas",
-      "quarterly_revenue": [
-        300000000,
-        305000000,
-        298000000,
-        310000000
-      ],
-      "sic_codes": [
-        "7372"
-      ],
-      "digital_exposure": 2,
-      "disruption_speed": 3,
-      "recovery_complexity": 3
-    }
-  },
-  "RetailFlow Corp (retailflow.com)": {
-    "name": "RetailFlow Corp",
-    "domain": "retailflow.com",
-    "risk_category": "Partially Favourable",
-    "underwriting_rationale": {
-      "Mergers and Acquisitions": "M&A points: 4.5 calculated across 1 acquisitions. Revenue tier comparison applied.",
-      "Amount of sensitive information": "Customer type: B2C, E-commerce presence: True.",
-      "Domain Encryption": "HTTPS Encryption: 2 of 3 domains encrypted.",
-      "Geographic Spread": "Operates in 3 countries across 1 continents. USA Presence: True.",
-      "Internet footprint": "Footprint score: 30.0 (domains: 15 x multiplier: 2.0 based on customer scale: Mid-Market (1k-10k)).",
-      "Nature of services": "Cyber sub-industry appetite category is 'medium_risk_retail'.",
-      "Organizational Complexity": "Total subsidiaries: 3 evaluated against revenue tier.",
-      "Privacy Regulation": "Privacy Policy published: True, Compliance frameworks: 2 (PCI-DSS, CCPA).",
-      "Seasonality of sales": "Fallback to SIC code 5311 benchmark: Retail has high seasonality.",
-      "Volatility/Recovery in Sales": "Dimensions avg: 3.33 (Digital exposure: 4/5, Disruption speed: 3/5, Recovery complexity: 3/5)."
-    },
-    "modifier_scores": {
-      "Mergers and Acquisitions": {
-        "score": 4.5,
-        "rating": "partially favourable"
-      },
-      "Amount of sensitive information": {
-        "score": 0.0,
-        "rating": "Partially Unfavourable"
-      },
-      "Domain Encryption": {
-        "score": "2/3",
-        "rating": "partially favourable"
-      },
-      "Geographic Spread": {
-        "score": 3,
-        "rating": "favourable"
-      },
-      "Internet footprint": {
-        "score": 30.0,
-        "rating": "partially unfavourable"
-      },
-      "Nature of services": {
-        "score": "medium_risk_retail",
-        "rating": "average"
-      },
-      "Organizational Complexity": {
-        "score": 3,
-        "rating": "very favourable"
-      },
-      "Privacy Regulation": {
-        "score": 2,
-        "rating": "favourable"
-      },
-      "Seasonality of sales": {
-        "score": 0.0,
-        "rating": "partially unfavourable"
-      },
-      "Volatility/Recovery in Sales": {
-        "score": 3.3333333333333335,
-        "rating": "average"
-      }
-    },
-    "confidence_score": 83.3,
-    "confidence_band": "High",
-    "accuracy_score": 0.8333333333333334,
-    "human_escalation_flag": false,
-    "reconciled_profile": {
-      "revenue": 120000000,
-      "subsidiaries": [
-        "FlowPay LLC",
-        "FlowLogistics Inc",
-        "FlowRetail Ltd"
-      ],
-      "acquisitions": [
-        {
-          "name": "QuickCart LLC",
-          "employee_count_before": 200,
-          "revenue_before": 25000000,
-          "deal_type": "material acquisition",
-          "recency_years": 1.5
-        }
-      ],
-      "customer_type": "B2C",
-      "has_ecommerce": true,
-      "domains": [
-        {
-          "url": "retailflow.com",
-          "https_encrypted": true
-        },
-        {
-          "url": "flowpay.com",
-          "https_encrypted": true
-        },
-        {
-          "url": "retailflow-blog.com",
-          "https_encrypted": false
-        }
-      ],
-      "privacy_policy_published": true,
-      "compliance_mentions": [
-        "PCI-DSS",
-        "CCPA"
-      ],
-      "countries_of_operation": [
-        "USA",
-        "Canada",
-        "Mexico"
-      ],
-      "continent_spread": [
-        "North America"
-      ],
-      "usa_presence": true,
-      "internet_exposure_domains": 15,
-      "customer_base_scale": "Mid-Market (1k-10k)",
-      "services_appetite": "medium_risk_retail",
-      "quarterly_revenue": [],
-      "sic_codes": [
-        "5311"
-      ],
-      "digital_exposure": 4,
-      "disruption_speed": 3,
-      "recovery_complexity": 3
-    }
-  },
-  "Acme Corp (acme.com)": {
-    "name": "Acme Corp",
-    "domain": "acme.com",
-    "risk_category": "Favourable",
-    "underwriting_rationale": {
-      "Mergers and Acquisitions": "M&A points: 0.0 calculated across 0 acquisitions. Revenue tier comparison applied.",
-      "Amount of sensitive information": "Customer type: B2B, E-commerce presence: False.",
-      "Domain Encryption": "HTTPS Encryption: 1 of 1 domains encrypted.",
-      "Geographic Spread": "Operates in 1 countries across 1 continents. USA Presence: True.",
-      "Internet footprint": "Footprint score: 1.0 (domains: 1 x multiplier: 1.0 based on customer scale: SMB (<1k)).",
-      "Nature of services": "Cyber sub-industry appetite category is 'medium_risk'.",
-      "Organizational Complexity": "Total subsidiaries: 0 evaluated against revenue tier.",
-      "Privacy Regulation": "Privacy Policy published: True, Compliance frameworks: 0 ().",
-      "Seasonality of sales": "Fallback to SIC code 7372 benchmark: Software/services expected average seasonality.",
-      "Volatility/Recovery in Sales": "Dimensions avg: 3.00 (Digital exposure: 3/5, Disruption speed: 3/5, Recovery complexity: 3/5)."
-    },
-    "modifier_scores": {
-      "Mergers and Acquisitions": {
-        "score": 0.0,
-        "rating": "very favourable"
-      },
-      "Amount of sensitive information": {
-        "score": 0.0,
-        "rating": "favourable"
-      },
-      "Domain Encryption": {
-        "score": "1/1",
-        "rating": "favourable"
-      },
-      "Geographic Spread": {
-        "score": 1,
-        "rating": "favourable"
-      },
-      "Internet footprint": {
-        "score": 1.0,
-        "rating": "favourable"
-      },
-      "Nature of services": {
-        "score": "medium_risk",
-        "rating": "average"
-      },
-      "Organizational Complexity": {
-        "score": 0,
-        "rating": "very favourable"
-      },
-      "Privacy Regulation": {
-        "score": 0,
-        "rating": "average"
-      },
-      "Seasonality of sales": {
-        "score": 0.0,
-        "rating": "average"
-      },
-      "Volatility/Recovery in Sales": {
-        "score": 3.0,
-        "rating": "average"
-      }
-    },
-    "confidence_score": 50.0,
-    "confidence_band": "Medium",
-    "accuracy_score": 0.5,
-    "human_escalation_flag": false,
-    "reconciled_profile": {
-      "revenue": 0,
-      "subsidiaries": [],
-      "acquisitions": [],
-      "customer_type": "B2B",
-      "has_ecommerce": false,
-      "domains": [
-        {
-          "url": "acme.com",
-          "https_encrypted": true
-        }
-      ],
-      "privacy_policy_published": true,
-      "compliance_mentions": [],
-      "countries_of_operation": [
-        "USA"
-      ],
-      "continent_spread": [
-        "North America"
-      ],
-      "usa_presence": true,
-      "internet_exposure_domains": 1,
-      "customer_base_scale": "SMB (<1k)",
-      "services_appetite": "medium_risk",
-      "quarterly_revenue": [],
-      "sic_codes": [
-        "7372"
-      ],
-      "digital_exposure": 3,
-      "disruption_speed": 3,
-      "recovery_complexity": 3
-    }
-  },
   "Microsoft (microsoft.com)": {
     "name": "Microsoft",
     "domain": "microsoft.com",
-    "risk_category": "Favourable",
-    "underwriting_rationale": {
-      "Mergers and Acquisitions": "M&A points: 0.0 calculated across 0 acquisitions. Revenue tier comparison applied.",
-      "Amount of sensitive information": "Customer type: B2B, E-commerce presence: False.",
-      "Domain Encryption": "HTTPS Encryption: 1 of 1 domains encrypted.",
-      "Geographic Spread": "Operates in 1 countries across 1 continents. USA Presence: True.",
-      "Internet footprint": "Footprint score: 1.0 (domains: 1 x multiplier: 1.0 based on customer scale: SMB (<1k)).",
-      "Nature of services": "Cyber sub-industry appetite category is 'medium_risk'.",
-      "Organizational Complexity": "Total subsidiaries: 0 evaluated against revenue tier.",
-      "Privacy Regulation": "Privacy Policy published: True, Compliance frameworks: 0 ().",
-      "Seasonality of sales": "Fallback to SIC code 7372 benchmark: Software/services expected average seasonality.",
-      "Volatility/Recovery in Sales": "Dimensions avg: 3.00 (Digital exposure: 3/5, Disruption speed: 3/5, Recovery complexity: 3/5)."
-    },
-    "modifier_scores": {
-      "Mergers and Acquisitions": {
-        "score": 0.0,
-        "rating": "very favourable"
+    "collected_evidence": {
+      "WebSearch": {
+        "source": "WebSearch",
+        "status": "skipped",
+        "is_mock": false,
+        "message": "BING_API_KEY not found. WebSearch skipped.",
+        "findings": {}
       },
-      "Amount of sensitive information": {
-        "score": 0.0,
-        "rating": "favourable"
+      "DomainScraper": {
+        "source": "DomainScraper",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "domains": [
+            {
+              "url": "microsoft.com",
+              "https_encrypted": true
+            }
+          ],
+          "privacy_policy_published": true,
+          "compliance_mentions": []
+        }
       },
-      "Domain Encryption": {
-        "score": "1/1",
-        "rating": "favourable"
+      "DBCollector": {
+        "source": "DBCollector",
+        "status": "success",
+        "is_mock": false,
+        "source_type": "gleif",
+        "source_weight": 0.95,
+        "findings": {
+          "legal_name": null,
+          "lei": null,
+          "entity_status": null,
+          "country": null,
+          "legal_address": {},
+          "headquarters_address": {},
+          "registration_authority": {},
+          "legal_form": {},
+          "parent_relationships": {
+            "lei-records": {
+              "data": {
+                "type": "lei-records",
+                "id": "967600DJA1Q8K13MZ845"
+              },
+              "links": {
+                "related": "https://api.gleif.org/api/v1/lei-records/967600DJA1Q8K13MZ845"
+              }
+            }
+          },
+          "sic_codes": [],
+          "sic_source": "not_available_in_gleif",
+          "revenue": null,
+          "revenue_source": "not_available_in_gleif",
+          "employees": null
+        }
       },
-      "Geographic Spread": {
-        "score": 1,
-        "rating": "favourable"
+      "Wikipedia": {
+        "source": "Wikipedia",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "country": "USA"
+        }
       },
-      "Internet footprint": {
-        "score": 1.0,
-        "rating": "favourable"
+      "SECCollector": {
+        "source": "SECCollector",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "sec_acquisitions": [],
+          "subsidiaries_exhibit21": [
+            "Subsidiary 0",
+            "Subsidiary 1",
+            "Subsidiary 2",
+            "Subsidiary 3",
+            "Subsidiary 4",
+            "Subsidiary 5",
+            "Subsidiary 6",
+            "Subsidiary 7",
+            "Subsidiary 8",
+            "Subsidiary 9",
+            "Subsidiary 10",
+            "Subsidiary 11"
+          ],
+          "revenue": 281724000000,
+          "revenue_period": "annual",
+          "fiscal_year": 2025
+        }
       },
-      "Nature of services": {
-        "score": "medium_risk",
-        "rating": "average"
-      },
-      "Organizational Complexity": {
-        "score": 0,
-        "rating": "very favourable"
-      },
-      "Privacy Regulation": {
-        "score": 0,
-        "rating": "average"
-      },
-      "Seasonality of sales": {
-        "score": 0.0,
-        "rating": "average"
-      },
-      "Volatility/Recovery in Sales": {
-        "score": 3.0,
-        "rating": "average"
+      "Wikidata": {
+        "source": "Wikidata",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "official_name": "Microsoft Corporation",
+          "country": "United States",
+          "headquarters": "Redmond",
+          "industry": [
+            "technology industry",
+            "software industry",
+            "software development",
+            "International Standard Industrial Classification",
+            "consumer electronics industry"
+          ],
+          "official_website": "https://www.microsoft.com/",
+          "parent_company": null,
+          "subsidiaries": [
+            "Xbox Game Studios",
+            "Avanade",
+            "Microsoft Algeria",
+            "Microsoft India R & D",
+            "Lionhead Studios",
+            "Microsoft Mobile",
+            "Microsoft Production Studios",
+            "Rare Ltd.",
+            "Ensemble Studios",
+            "Microsoft Store",
+            "ProClarity",
+            "Danger, Inc.",
+            "Perceptive Pixel",
+            "GreenButton",
+            "Microsoft Research Asia",
+            "Sysinternals",
+            "Massive Incorporated",
+            "Jellyfish.com",
+            "Powerset",
+            "Tellme Networks",
+            "Visio Corporation",
+            "aQuantive",
+            "Turn 10 Studios",
+            "Fast Search & Transfer",
+            "Razorfish",
+            "DATAllegro",
+            "Microsoft Kids",
+            "Microsoft Egypt",
+            "Microsoft Israel",
+            "Microsoft (United Kingdom)",
+            "Microsoft (Netherlands)",
+            "Microsoft s.r.o.",
+            "Microsoft (Ukraine)",
+            "LinkedIn Corporation",
+            "Microsoft (France)",
+            "Microsoft Ireland Research",
+            "Microsoft Global Finance",
+            "Microsoft Ireland Operations",
+            "Microsoft Online",
+            "Microsoft Operations",
+            "Microsoft Regional Sales",
+            "LinkedIn Ireland",
+            "Microsoft Saudi",
+            "Skype Technologies",
+            "Microsoft Japan",
+            "Softomotive",
+            "Dreamworks Interactive",
+            "ZeniMax Media",
+            "Microsoft Switzerland",
+            "Microsoft Canada",
+            "GitHub",
+            "Clipchamp Pty Ltd",
+            "Microsoft Morocco",
+            "Nuance Communications",
+            "Activision Blizzard",
+            "Microsoft Germany",
+            "Microsoft Experiences + Devices"
+          ],
+          "revenue": 93580000000.0,
+          "employees": 221000.0,
+          "market_cap": 407000000000.0
+        }
       }
     },
-    "confidence_score": 50.0,
-    "confidence_band": "Medium",
-    "accuracy_score": 0.5,
-    "human_escalation_flag": false,
-    "reconciled_profile": {
-      "revenue": 0,
-      "subsidiaries": [],
-      "acquisitions": [],
-      "customer_type": "B2B",
-      "has_ecommerce": false,
-      "domains": [
-        {
-          "url": "microsoft.com",
-          "https_encrypted": true
+    "cache_type": "collector_cache"
+  },
+  "Tata Consultancy Services (tcs.com)": {
+    "name": "Tata Consultancy Services",
+    "domain": "tcs.com",
+    "collected_evidence": {
+      "WebSearch": {
+        "source": "WebSearch",
+        "status": "skipped",
+        "is_mock": false,
+        "message": "BING_API_KEY not found. WebSearch skipped.",
+        "findings": {}
+      },
+      "DomainScraper": {
+        "source": "DomainScraper",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "domains": [
+            {
+              "url": "tcs.com",
+              "https_encrypted": true
+            }
+          ],
+          "privacy_policy_published": true,
+          "compliance_mentions": []
         }
-      ],
-      "privacy_policy_published": true,
-      "compliance_mentions": [],
-      "countries_of_operation": [
-        "USA"
-      ],
-      "continent_spread": [
-        "North America"
-      ],
-      "usa_presence": true,
-      "internet_exposure_domains": 1,
-      "customer_base_scale": "SMB (<1k)",
-      "services_appetite": "medium_risk",
-      "quarterly_revenue": [],
-      "sic_codes": [
-        "7372"
-      ],
-      "digital_exposure": 3,
-      "disruption_speed": 3,
-      "recovery_complexity": 3
-    }
+      },
+      "SECCollector": {
+        "source": "SECCollector",
+        "status": "skipped",
+        "is_mock": false,
+        "message": "Company not found in SEC EDGAR tickers.",
+        "findings": {}
+      },
+      "DBCollector": {
+        "source": "DBCollector",
+        "status": "success",
+        "is_mock": false,
+        "source_type": "gleif",
+        "source_weight": 0.95,
+        "findings": {
+          "legal_name": null,
+          "lei": null,
+          "entity_status": null,
+          "country": null,
+          "legal_address": {},
+          "headquarters_address": {},
+          "registration_authority": {},
+          "legal_form": {},
+          "parent_relationships": {
+            "lei-records": {
+              "data": {
+                "type": "lei-records",
+                "id": "894500VU5WO892CGOK47"
+              },
+              "links": {
+                "related": "https://api.gleif.org/api/v1/lei-records/894500VU5WO892CGOK47"
+              }
+            }
+          },
+          "sic_codes": [],
+          "sic_source": "not_available_in_gleif",
+          "revenue": null,
+          "revenue_source": "not_available_in_gleif",
+          "employees": null
+        }
+      },
+      "Wikipedia": {
+        "source": "Wikipedia",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "country": "India"
+        }
+      },
+      "Wikidata": {
+        "source": "Wikidata",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "official_name": null,
+          "country": "India",
+          "headquarters": "Mumbai",
+          "industry": [
+            "IT service management",
+            "information technology consulting"
+          ],
+          "official_website": "https://www.tcs.com/",
+          "parent_company": null,
+          "subsidiaries": [],
+          "revenue": null,
+          "employees": 600000.0,
+          "market_cap": null
+        }
+      }
+    },
+    "cache_type": "collector_cache"
+  },
+  "Apple (apple.com)": {
+    "name": "Apple",
+    "domain": "apple.com",
+    "collected_evidence": {
+      "WebSearch": {
+        "source": "WebSearch",
+        "status": "skipped",
+        "is_mock": false,
+        "message": "BING_API_KEY not found. WebSearch skipped.",
+        "findings": {}
+      },
+      "DomainScraper": {
+        "source": "DomainScraper",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "domains": [
+            {
+              "url": "apple.com",
+              "https_encrypted": true
+            }
+          ],
+          "privacy_policy_published": true,
+          "compliance_mentions": []
+        }
+      },
+      "DBCollector": {
+        "source": "DBCollector",
+        "status": "success",
+        "is_mock": false,
+        "source_type": "gleif",
+        "source_weight": 0.95,
+        "findings": {
+          "legal_name": null,
+          "lei": null,
+          "entity_status": null,
+          "country": null,
+          "legal_address": {},
+          "headquarters_address": {},
+          "registration_authority": {},
+          "legal_form": {},
+          "parent_relationships": {
+            "lei-records": {
+              "data": {
+                "type": "lei-records",
+                "id": "9695006WHN4DWDKBF403"
+              },
+              "links": {
+                "related": "https://api.gleif.org/api/v1/lei-records/9695006WHN4DWDKBF403"
+              }
+            }
+          },
+          "sic_codes": [],
+          "sic_source": "not_available_in_gleif",
+          "revenue": null,
+          "revenue_source": "not_available_in_gleif",
+          "employees": null
+        }
+      },
+      "Wikipedia": {
+        "source": "Wikipedia",
+        "status": "success",
+        "is_mock": false,
+        "findings": {}
+      },
+      "SECCollector": {
+        "source": "SECCollector",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "sec_acquisitions": [],
+          "subsidiaries_exhibit21": [
+            "Subsidiary 0",
+            "Subsidiary 1",
+            "Subsidiary 2",
+            "Subsidiary 3",
+            "Subsidiary 4",
+            "Subsidiary 5",
+            "Subsidiary 6",
+            "Subsidiary 7",
+            "Subsidiary 8",
+            "Subsidiary 9",
+            "Subsidiary 10",
+            "Subsidiary 11",
+            "Subsidiary 12",
+            "Subsidiary 13",
+            "Subsidiary 14",
+            "Subsidiary 15",
+            "Subsidiary 16",
+            "Subsidiary 17",
+            "Subsidiary 18",
+            "Subsidiary 19"
+          ],
+          "revenue": 416161000000,
+          "revenue_period": "annual",
+          "fiscal_year": 2025
+        }
+      },
+      "Wikidata": {
+        "source": "Wikidata",
+        "status": "success",
+        "is_mock": false,
+        "findings": {
+          "official_name": "Apple Inc.",
+          "country": "United States",
+          "headquarters": "Cupertino",
+          "industry": [
+            "software industry",
+            "consumer electronics industry",
+            "digital distribution",
+            "electronics industry",
+            "information technology industry",
+            "mobile phone industry",
+            "software development"
+          ],
+          "official_website": "https://apple.com/at/",
+          "parent_company": null,
+          "subsidiaries": [
+            "FileMaker, Inc.",
+            "Anobit",
+            "Beats Electronics",
+            "Braeburn Capital",
+            "AuthenTec",
+            "FingerWorks",
+            "Prismo Graphics",
+            "Raycer",
+            "SchemaSoft",
+            "Apple Germany",
+            "Apple Israel",
+            "Claris",
+            "Apple Store",
+            "Apple Sales International",
+            "Siri Inc.",
+            "Apple Czech",
+            "Apple Korea"
+          ],
+          "revenue": 233715000000.0,
+          "employees": 115000.0,
+          "market_cap": 1000000000000.0
+        }
+      }
+    },
+    "cache_type": "collector_cache"
   }
 }

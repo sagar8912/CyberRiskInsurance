@@ -43,9 +43,14 @@ def fact_checker_node(state: CyberRiskState) -> Dict[str, Any]:
     sources_rev = sum(1 for src in ["SECCollector", "DBCollector", "Wikipedia", "Wikidata"] if is_valid(src, "revenue", True))
     
     rev_conflict = any(flag["parameter"] == "revenue" for flag in conflict_flags)
+    rev_partial = any(flag["parameter"] == "revenue_partial" for flag in conflict_flags)
+    
     if rev_conflict:
         claims["revenue"] = {"status": "[X] Contradicted", "confidence": 0.0, "sources_count": sources_rev}
         logs.append("Fact Checker: Revenue claim is CONTRADICTED due to mismatch between sources.")
+    elif rev_partial:
+        claims["revenue"] = {"status": "[I] Partial", "confidence": 0.5, "sources_count": sources_rev}
+        logs.append("Fact Checker: Revenue claim has PARTIAL evidence (sources differ by <5x).")
     elif sources_rev >= 2:
         claims["revenue"] = {"status": "[OK] Verified", "confidence": 1.0, "sources_count": sources_rev}
         logs.append(f"Fact Checker: Revenue claim is VERIFIED by {sources_rev} sources.")
@@ -65,9 +70,14 @@ def fact_checker_node(state: CyberRiskState) -> Dict[str, Any]:
     ] if is_valid(src, key))
         
     subs_conflict = any(flag["parameter"] == "subsidiaries" for flag in conflict_flags)
+    subs_partial = any(flag["parameter"] == "subsidiaries_partial" for flag in conflict_flags)
+    
     if subs_conflict:
         claims["subsidiaries"] = {"status": "[X] Contradicted", "confidence": 0.0, "sources_count": sources_subs}
         logs.append("Fact Checker: Subsidiaries claim is CONTRADICTED due to count mismatch.")
+    elif subs_partial:
+        claims["subsidiaries"] = {"status": "[I] Partial", "confidence": 0.5, "sources_count": sources_subs}
+        logs.append("Fact Checker: Subsidiaries claim has PARTIAL evidence (counts vary but both >0).")
     elif sources_subs >= 2:
         claims["subsidiaries"] = {"status": "[OK] Verified", "confidence": 1.0, "sources_count": sources_subs}
         logs.append("Fact Checker: Subsidiaries claim is VERIFIED by 2 sources.")

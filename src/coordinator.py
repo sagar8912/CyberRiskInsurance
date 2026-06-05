@@ -51,18 +51,52 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
         logs.append("Coordinator: Reconciled Revenue = None (No source available)")
 
     # Conflict check on revenue
-    revenues = {"SEC": sec_rev or 0, "GLEIF": db_rev or 0, "Wikidata": wikidata_rev or 0, "Wikipedia": wiki_rev or 0}
-    valid_revs = {k: v for k, v in revenues.items() if v > 0}
-    if len(valid_revs) > 1:
-        vals = list(valid_revs.values())
-        max_val = max(vals)
-        min_val = min(vals)
+    raw_revenues = {"SEC": sec_rev, "GLEIF": db_rev, "Wikidata": wikidata_rev, "Wikipedia": wiki_rev}
+    explicit_zeros = {k: v for k, v in raw_revenues.items() if v == 0}
+    valid_revs = {k: v for k, v in raw_revenues.items() if v is not None and v > 0}
+    
+    is_contradicted = False
+    contradiction_msg = ""
+    
+    # 1. Zero vs Very Large
+    if len(valid_revs) >= 1 and len(explicit_zeros) >= 1:
+        if max(valid_revs.values()) > 1000000:
+            is_contradicted = True
+            contradiction_msg = "One source reported 0 while another reported > $1M"
+
+    # 2. Difference > 5x
+    if len(valid_revs) > 1 and not is_contradicted:
+        max_val = max(valid_revs.values())
+        min_val = min(valid_revs.values())
+        if min_val > 0 and max_val > 5 * min_val:
+            is_contradicted = True
+            contradiction_msg = f"Values differ by >5x (Max: {max_val}, Min: {min_val})"
+
+    # 3. Fiscal year mismatch
+    if not is_contradicted:
+        fy_list = []
+        if sec_findings.get("fiscal_year"): fy_list.append(int(sec_findings["fiscal_year"]))
+        if db_findings.get("fiscal_year"): fy_list.append(int(db_findings["fiscal_year"]))
+        if len(fy_list) >= 2 and (max(fy_list) - min(fy_list)) > 2:
+            is_contradicted = True
+            contradiction_msg = f"Fiscal years differ significantly: {fy_list}"
+            
+    # Emit flags
+    if is_contradicted:
+        conflict_flags.append({
+            "parameter": "revenue",
+            "message": f"Revenue contradiction: {contradiction_msg}. Sources: {raw_revenues}"
+        })
+        logs.append(f"Coordinator Warning: Revenue contradiction detected: {contradiction_msg}")
+    elif len(valid_revs) > 1:
+        max_val = max(valid_revs.values())
+        min_val = min(valid_revs.values())
         if min_val > 0 and (max_val - min_val) / min_val > 0.2:
             conflict_flags.append({
-                "parameter": "revenue",
-                "message": f"Revenue mismatch between sources: {valid_revs}"
+                "parameter": "revenue_partial",
+                "message": f"Revenue variance within 5x: {valid_revs}"
             })
-            logs.append(f"Coordinator Warning: Significant revenue mismatch detected across sources: {valid_revs}")
+            logs.append(f"Coordinator Warning: Revenue variance (partial match): {valid_revs}")
 
     # 2. Reconcile Subsidiaries: SEC > Wikidata + Wikipedia
     sec_subs = sec_findings.get("subsidiaries_exhibit21")
@@ -72,7 +106,7 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
     # Combine Wikipedia and Wikidata subsidiaries if SEC is not available
     combined_wiki_subs = list(set(wiki_subs + wikidata_subs))
     
-    if sec_subs is not None:
+    if sec_subs is not None and len(sec_subs) > 0:
         reconciled["subsidiaries"] = sec_subs
         logs.append(f"Coordinator: Reconciled Subsidiaries count = {len(sec_subs)} (Source: SEC Exhibit 21)")
     elif combined_wiki_subs:
@@ -84,12 +118,20 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
 
     # Conflict check on subsidiaries
     if sec_subs is not None and combined_wiki_subs:
-        if abs(len(sec_subs) - len(combined_wiki_subs)) > 5:
+        sec_len = len(sec_subs)
+        wiki_len = len(combined_wiki_subs)
+        if sec_len == 0 and wiki_len > 10:
             conflict_flags.append({
                 "parameter": "subsidiaries",
-                "message": f"Subsidiary count mismatch: SEC={len(sec_subs)}, Wiki/Wikidata={len(combined_wiki_subs)}"
+                "message": f"Subsidiaries contradiction: SEC=0 while Wiki={wiki_len}"
             })
-            logs.append(f"Coordinator Warning: Subsidiary count mismatch: SEC={len(sec_subs)}, Wiki/Wikidata={len(combined_wiki_subs)}")
+            logs.append(f"Coordinator Warning: Subsidiaries contradiction (0 vs large): SEC=0, Wiki={wiki_len}")
+        elif sec_len > 0 and wiki_len > 0 and sec_len != wiki_len:
+            conflict_flags.append({
+                "parameter": "subsidiaries_partial",
+                "message": f"Subsidiaries partial variance: SEC={sec_len}, Wiki={wiki_len}"
+            })
+            logs.append(f"Coordinator Warning: Subsidiaries variance (partial match): SEC={sec_len}, Wiki={wiki_len}")
 
     # 3. Reconcile Acquisitions: deduplicate SEC and WebSearch
     sec_acq = sec_findings.get("sec_acquisitions", [])
