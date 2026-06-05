@@ -64,15 +64,20 @@ def underwriter_node(state: CyberRiskState) -> Dict[str, Any]:
     logs.append(f"Underwriter: Aggregated Average Score = {avg_score:.2f} -> Risk Category: '{risk_category}'")
 
     # 4. Confidence Score & Band based on Fact Checker accuracy
-    confidence_score = float(round(accuracy * 100.0, 1))
-    if accuracy >= 0.8:
-        confidence_band = "High"
-    elif accuracy >= 0.5:
-        confidence_band = "Medium"
+    if state.get("entity_status") == "Mismatch":
+        confidence_score = 0.0
+        confidence_band = "Very Low"
+        logs.append(f"Underwriter: Entity Status is Mismatch -> Forcing Confidence to 0.0% (Very Low)")
     else:
-        confidence_band = "Low"
-        
-    logs.append(f"Underwriter: Fact-checking Accuracy = {accuracy:.2f} -> Confidence: {confidence_score}% ({confidence_band})")
+        confidence_score = float(round(accuracy * 100.0, 1))
+        if accuracy >= 0.8:
+            confidence_band = "High"
+        elif accuracy >= 0.5:
+            confidence_band = "Medium"
+        else:
+            confidence_band = "Low"
+            
+        logs.append(f"Underwriter: Fact-checking Accuracy = {accuracy:.2f} -> Confidence: {confidence_score}% ({confidence_band})")
 
     # 5. Human-in-the-Loop Escalation Logic
     # Trigger if: accuracy < 50%, entity mismatch, or active contradictions
@@ -81,7 +86,7 @@ def underwriter_node(state: CyberRiskState) -> Dict[str, Any]:
     if accuracy < 0.5:
         human_escalation_flag = True
         reasons.append(f"Accuracy score ({accuracy:.2f}) below 50% threshold.")
-    if mismatch:
+    if mismatch or state.get("entity_status") == "Mismatch":
         human_escalation_flag = True
         reasons.append("Supervisor flagged entity mismatch.")
     if len(conflicts) > 0:
@@ -95,21 +100,15 @@ def underwriter_node(state: CyberRiskState) -> Dict[str, Any]:
 
     # 6. Cache Write
     profile_summary = {
-        "risk_category": risk_category,
-        "underwriting_rationale": underwriting_rationale,
-        "modifier_scores": modifier_scores,
-        "confidence_score": confidence_score,
-        "confidence_band": confidence_band,
-        "accuracy_score": accuracy,
-        "human_escalation_flag": human_escalation_flag,
-        "reconciled_profile": reconciled
+        "collected_evidence": state.get("collected_evidence", {}),
+        "cache_type": "collector_cache"
     }
     
     # Only write to cache if it wasn't a cache hit and the data is valid
     if state.get("valid") and not state.get("cache_hit"):
         cache_mgr = CacheManager()
         cache_mgr.write(state.get("company_name"), state.get("domain"), profile_summary)
-        logs.append("Underwriter: Saved final evaluation profile and aliases to cache database.")
+        logs.append("Underwriter: Saved collector evidence to cache database.")
 
     return {
         "risk_category": risk_category,

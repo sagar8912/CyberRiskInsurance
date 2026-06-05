@@ -30,6 +30,8 @@ def main():
         "valid": False,
         "enrichment": {},
         "mismatch_flag": False,
+        "entity_status": "Match",
+        "entity_resolution_confidence": "High",
         "cache_hit": False,
         "cache_data": None,
         "routing_tier": "Unknown / Tiny",
@@ -68,26 +70,31 @@ def main():
     for log in final_state.get("audit_logs", []):
         print(f"  > {log}")
 
-    # 3. Check Cache Hit vs Normal Run output
-    if final_state.get("cache_hit"):
-        print_header("Cache Lookup Outcome")
-        print("[CACHE HIT] Returning verified record from database...")
-        cache_data = final_state.get("cache_data", {})
-        
-        print(f"\nFinal Risk Category:   {cache_data.get('risk_category')}")
-        print(f"Confidence Rating:     {cache_data.get('confidence_score')}% ({cache_data.get('confidence_band')})")
-        print(f"Escalate to Human:     {cache_data.get('human_escalation_flag')}")
-        
-        print("\nModifier Scores:")
-        for mod, details in cache_data.get("modifier_scores", {}).items():
-            print(f"  - {mod}: {details.get('rating').upper()} (Score: {details.get('score')})")
-            print(f"    Rationale: {cache_data.get('underwriting_rationale', {}).get(mod)}")
-        sys.exit(0)
+    # (Removed early exit cache block; standard output handles cache hits natively)
 
     # 4. Standard Run results
+    evidence = final_state.get("collected_evidence", {})
+    real_sources = []
+    mock_sources_used = False
+    
+    for tool_name, data in evidence.items():
+        if data.get("status") == "success":
+            if data.get("is_mock", False):
+                mock_sources_used = True
+            else:
+                real_sources.append(tool_name)
+    
+    print_header("Collectors Run")
+    print("Real Sources Used:")
+    print(f"{', '.join(real_sources) if real_sources else 'None'}")
+    print("Mock Sources Used:")
+    print("Yes" if mock_sources_used else "No")
+
     reconciled = final_state.get("reconciled_profile", {})
     print_header("Reconciled Company Profile")
-    print(f"Reconciled Revenue:   ${reconciled.get('revenue', 0):,}")
+    rev = reconciled.get('revenue')
+    rev_display = f"${rev:,}" if rev is not None else "Not Available"
+    print(f"Reconciled Revenue:   {rev_display}")
     print(f"Subsidiaries Count:   {len(reconciled.get('subsidiaries', []))}")
     print(f"Acquisitions Count:   {len(reconciled.get('acquisitions', []))}")
     print(f"Customer Type:        {reconciled.get('customer_type')}")
@@ -107,6 +114,7 @@ def main():
         print(f"    Rationale: {final_state.get('underwriting_rationale', {}).get(mod)}")
 
     print_header("Final Underwriting Modifier Verdict")
+    print(f"Entity Status:       {final_state.get('entity_status', 'Match')}")
     print(f"Risk Category:       {final_state.get('risk_category').upper()}")
     print(f"Underwriting Score:  {final_state.get('confidence_score')}%")
     print(f"Confidence Band:     {final_state.get('confidence_band')}")

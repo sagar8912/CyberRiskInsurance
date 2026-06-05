@@ -9,6 +9,8 @@ class CyberRiskState(TypedDict):
     valid: bool
     enrichment: Dict[str, Any]       # Auto-detected country, TLD, etc.
     mismatch_flag: bool              # Entity mismatch flag
+    entity_status: str               # "Match" or "Mismatch"
+    entity_resolution_confidence: str # e.g. "Low", "High"
     cache_hit: bool
     cache_data: Optional[Dict[str, Any]]
     

@@ -8,36 +8,49 @@ def router_node(state: CyberRiskState) -> Dict[str, Any]:
     logs = []
     
     # Fast check of local mock data to simulate finding initial revenue range
-    revenue = 0
+    revenue = None
     mock_data_path = "data/mock_sources/mock_companies.json"
     if os.path.exists(mock_data_path):
         with open(mock_data_path, "r") as f:
             mock_db = json.load(f)
             if name in mock_db:
-                revenue = mock_db[name].get("revenue", 0)
+                revenue = mock_db[name].get("revenue", None)
                 
-    logs.append(f"Router: Looked up initial estimated revenue for '{name}': ${revenue:,}")
-
+    if revenue is not None:
+        logs.append(f"Router: Looked up initial estimated revenue for '{name}': ${revenue:,}")
+        revenue_confidence = "high"
+    else:
+        logs.append(f"Router: Revenue not available for '{name}', inferring tier from signals.")
+        revenue_confidence = "low"
+        revenue = 0  # Fallback for tier logic
+        
     # Determine Tier and Tool Budget
+    enable_responses = os.environ.get("ENABLE_RESPONSES_API", "false").lower() == "true"
+    base_tools = ["WebSearch", "DomainScraper", "Wikipedia", "Wikidata", "DBCollector", "SECCollector"]
+    if enable_responses:
+        base_tools.append("ResponsesAPI")
+
     if revenue >= 500000000:
         routing_tier = "Public / $500M+"
-        tool_budget = ["WebSearch", "DomainScraper", "Wikipedia", "DBCollector", "SECCollector", "ResponsesAPI"]
+        tool_budget = list(base_tools)
     elif revenue >= 50000000:
         routing_tier = "$50M - $500M"
-        tool_budget = ["WebSearch", "DomainScraper", "Wikipedia", "DBCollector", "SECCollector", "ResponsesAPI"]
+        tool_budget = list(base_tools)
     elif revenue > 0 and revenue < 50000000:
         routing_tier = "<$50M"
-        # 8 tools budget: 6 core + 2 additional mock tools (GitHubSearch, NewsSearch)
-        tool_budget = ["WebSearch", "DomainScraper", "Wikipedia", "DBCollector", "SECCollector", "ResponsesAPI", "GitHubSearch", "NewsSearch"]
+        tool_budget = list(base_tools) + ["GitHubSearch", "NewsSearch"]
     else:
         routing_tier = "Unknown / Tiny"
-        # 3 tools budget
-        tool_budget = ["WebSearch", "DomainScraper", "Wikipedia"]
+        tool_budget = list(base_tools)
 
-    logs.append(f"Router: Mapped to tier '{routing_tier}' with tool budget: {tool_budget}")
+    logs.append(f"Router: Mapped to tier '{routing_tier}' with tool budget: {tool_budget}. Confidence: {revenue_confidence}")
+
+    enrichment = state.get("enrichment", {})
+    enrichment["revenue_confidence"] = revenue_confidence
 
     return {
         "routing_tier": routing_tier,
         "tool_budget": tool_budget,
+        "enrichment": enrichment,
         "audit_logs": state.get("audit_logs", []) + logs
     }

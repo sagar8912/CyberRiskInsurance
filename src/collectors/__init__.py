@@ -4,6 +4,7 @@ from src.collectors.wikipedia import WikipediaCollector
 from src.collectors.db_collector import DBCollector
 from src.collectors.sec_collector import SECCollector
 from src.collectors.responses_api import ResponsesAPICollector
+from src.collectors.wikidata import WikidataCollector
 
 __all__ = [
     "WebSearchCollector",
@@ -11,5 +12,6 @@ __all__ = [
     "WikipediaCollector",
     "DBCollector",
     "SECCollector",
-    "ResponsesAPICollector"
+    "ResponsesAPICollector",
+    "WikidataCollector"
 ]

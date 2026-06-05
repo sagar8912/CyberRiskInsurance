@@ -1,3 +1,6 @@
+import json
+import urllib.request
+import urllib.parse
 from typing import Dict, Any
 from src.collectors.base import BaseCollector
 
@@ -6,27 +9,68 @@ class DBCollector(BaseCollector):
         super().__init__("DBCollector")
 
     def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
-        """
-        Stub method representing Dun & Bradstreet API.
-        In production, this would query D&B's business registry databases.
-        """
-        company_data = self._get_mock_company_data(company_name)
+        query = urllib.parse.quote(company_name)
+        url = f"https://api.gleif.org/api/v1/fuzzycompletions?field=entity.legalName&q={query}"
         
-        # Determine some mock SIC code based on company risk
-        services_appetite = company_data.get("services_appetite", "medium_risk")
-        sic_codes = ["7372"] # Default software
-        if "retail" in services_appetite:
-            sic_codes = ["5311"] # Department stores
-        elif "local" in services_appetite:
-            sic_codes = ["7299"] # Personal services
-
-        return {
-            "source": self.name,
-            "status": "success",
-            "findings": {
-                "revenue": company_data.get("revenue", 0),
-                "employee_count": company_data.get("employee_count", 0),
-                "sic_codes": sic_codes,
-                "legal_name": f"{company_name} D&B Inc."
+        try:
+            req = urllib.request.Request(url, headers={'Accept': 'application/json'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                data = json.loads(response.read().decode())
+                
+            if data.get("data") and len(data["data"]) > 0:
+                item = data["data"][0]
+                attrs = item.get("attributes", {})
+                entity = attrs.get("entity", {})
+                
+                legal_name = entity.get("legalName", {}).get("name")
+                lei = attrs.get("lei")
+                entity_status = entity.get("status")
+                
+                legal_address = entity.get("legalAddress", {})
+                headquarters_address = entity.get("headquartersAddress", {})
+                country = legal_address.get("country") or headquarters_address.get("country")
+                
+                registration_authority = entity.get("registrationAuthority", {})
+                legal_form = entity.get("legalForm", {})
+                
+                parent_relationships = item.get("relationships", {})
+                
+                return {
+                    "source": self.name,
+                    "status": "success",
+                    "is_mock": False,
+                    "source_type": "gleif",
+                    "source_weight": 0.95,
+                    "findings": {
+                        "legal_name": legal_name,
+                        "lei": lei,
+                        "entity_status": entity_status,
+                        "country": country,
+                        "legal_address": legal_address,
+                        "headquarters_address": headquarters_address,
+                        "registration_authority": registration_authority,
+                        "legal_form": legal_form,
+                        "parent_relationships": parent_relationships,
+                        "sic_codes": [],
+                        "sic_source": "not_available_in_gleif",
+                        "revenue": None,
+                        "revenue_source": "not_available_in_gleif",
+                        "employees": None
+                    }
+                }
+            else:
+                return {
+                    "source": self.name,
+                    "status": "skipped",
+                    "is_mock": False,
+                    "message": "No GLEIF entity found",
+                    "findings": {}
+                }
+        except Exception as e:
+            return {
+                "source": self.name,
+                "status": "error",
+                "is_mock": False,
+                "error": str(e),
+                "findings": {}
             }
-        }

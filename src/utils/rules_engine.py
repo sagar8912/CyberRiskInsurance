@@ -11,7 +11,9 @@ class CyberRulesEngine:
         Evaluate all 10 underwriting modifiers based on the reconciled profile.
         Returns a dictionary containing modifier names, points, ratings, and audit rationales.
         """
-        revenue = profile.get("revenue", 0)
+        revenue = profile.get("revenue")
+        if revenue is None:
+            revenue = 0
         results = {}
 
         # 1. Mergers and Acquisitions

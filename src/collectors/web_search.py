@@ -1,3 +1,4 @@
+import os
 from typing import Dict, Any
 from src.collectors.base import BaseCollector
 
@@ -6,21 +7,19 @@ class WebSearchCollector(BaseCollector):
         super().__init__("WebSearch")
 
     def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
-        """
-        Stub method representing Bing web search.
-        In production, this would make HTTP requests to the Bing Search API.
-        """
-        company_data = self._get_mock_company_data(company_name)
-        
-        # Extract relevant fields for WebSearch mock response
+        if not os.environ.get("BING_API_KEY"):
+            return {
+                "source": self.name,
+                "status": "skipped",
+                "is_mock": False,
+                "message": "BING_API_KEY not found. WebSearch skipped.",
+                "findings": {}
+            }
+
         return {
             "source": self.name,
-            "status": "success",
-            "findings": {
-                "acquisitions": company_data.get("acquisitions", []),
-                "customer_type": company_data.get("customer_type", "B2B"),
-                "has_ecommerce": company_data.get("has_ecommerce", False),
-                "countries_of_operation": company_data.get("countries_of_operation", ["USA"]),
-                "digital_exposure": company_data.get("digital_exposure", 3)
-            }
+            "status": "skipped",
+            "is_mock": False,
+            "message": "BING_API_KEY found, but real Bing search is not implemented yet.",
+            "findings": {}
         }

@@ -14,7 +14,8 @@ from src.collectors import (
     WikipediaCollector,
     DBCollector,
     SECCollector,
-    ResponsesAPICollector
+    ResponsesAPICollector,
+    WikidataCollector
 )
 
 def collectors_node(state: CyberRiskState) -> Dict[str, Any]:
@@ -29,6 +30,7 @@ def collectors_node(state: CyberRiskState) -> Dict[str, Any]:
         "WebSearch": WebSearchCollector(),
         "DomainScraper": DomainScraperCollector(),
         "Wikipedia": WikipediaCollector(),
+        "Wikidata": WikidataCollector(),
         "DBCollector": DBCollector(),
         "SECCollector": SECCollector(),
         "ResponsesAPI": ResponsesAPICollector()
@@ -59,12 +61,12 @@ def collectors_node(state: CyberRiskState) -> Dict[str, Any]:
         "audit_logs": state.get("audit_logs", []) + logs
     }
 
-def supervisor_routing(state: CyberRiskState) -> Literal["router_node", "__end__"]:
+def supervisor_routing(state: CyberRiskState) -> Literal["router_node", "coordinator_node", "__end__"]:
     """Determines whether to run collectors or exit early on invalid inputs or cache hits."""
     if not state.get("valid"):
         return "__end__"
     if state.get("cache_hit"):
-        return "__end__"
+        return "coordinator_node"
     return "router_node"
 
 def build_workflow():
@@ -88,6 +90,7 @@ def build_workflow():
         supervisor_routing,
         {
             "router_node": "router_node",
+            "coordinator_node": "coordinator_node",
             "__end__": END
         }
     )
