@@ -1,0 +1,113 @@
+{
+  "TechGiant Inc.": {
+    "name": "TechGiant Inc.",
+    "domain": "techgiant.com",
+    "country": "USA",
+    "revenue": 1200000000,
+    "employee_count": 15000,
+    "subsidiaries": [
+      "Sub1 Corp", "Sub2 LLC", "Sub3 Ltd", "Sub4 Inc", "Sub5 Co",
+      "Sub6 Corp", "Sub7 LLC", "Sub8 Ltd", "Sub9 Inc", "Sub10 Co",
+      "Sub11 Corp"
+    ],
+    "acquisitions": [
+      {
+        "name": "CloudSecure Ltd",
+        "employee_count_before": 200,
+        "revenue_before": 20000000,
+        "deal_type": "material acquisition",
+        "recency_years": 0.5
+      },
+      {
+        "name": "DataScale Inc",
+        "employee_count_before": 50,
+        "revenue_before": 5000000,
+        "deal_type": "minor acquisition",
+        "recency_years": 3.0
+      }
+    ],
+    "customer_type": "B2B",
+    "has_ecommerce": false,
+    "domains": [
+      {"url": "techgiant.com", "https_encrypted": true},
+      {"url": "techgiant-cloud.com", "https_encrypted": true},
+      {"url": "techgiant-billing.com", "https_encrypted": true}
+    ],
+    "countries_of_operation": ["USA", "Canada", "UK", "Germany", "France", "Japan", "Australia", "Singapore", "Brazil", "India", "Ireland", "Netherlands"],
+    "continent_spread": ["North America", "Europe", "Asia", "South America", "Oceania"],
+    "usa_presence": true,
+    "internet_exposure_domains": 120,
+    "customer_base_scale": "Enterprise (10k+)",
+    "services_appetite": "low_risk_cyber_saas",
+    "privacy_policy_published": true,
+    "compliance_mentions": ["GDPR", "CCPA", "HIPAA", "SOC2"],
+    "quarterly_revenue": [300000000, 305000000, 298000000, 310000000],
+    "digital_exposure": 2,
+    "disruption_speed": 2,
+    "recovery_complexity": 3
+  },
+  "RetailFlow Corp": {
+    "name": "RetailFlow Corp",
+    "domain": "retailflow.com",
+    "country": "USA",
+    "revenue": 120000000,
+    "employee_count": 800,
+    "subsidiaries": [
+      "FlowPay LLC", "FlowLogistics Inc", "FlowRetail Ltd"
+    ],
+    "acquisitions": [
+      {
+        "name": "QuickCart LLC",
+        "employee_count_before": 200,
+        "revenue_before": 25000000,
+        "deal_type": "material acquisition",
+        "recency_years": 1.5
+      }
+    ],
+    "customer_type": "B2C",
+    "has_ecommerce": true,
+    "domains": [
+      {"url": "retailflow.com", "https_encrypted": true},
+      {"url": "flowpay.com", "https_encrypted": true},
+      {"url": "retailflow-blog.com", "https_encrypted": false}
+    ],
+    "countries_of_operation": ["USA", "Canada", "Mexico"],
+    "continent_spread": ["North America"],
+    "usa_presence": true,
+    "internet_exposure_domains": 15,
+    "customer_base_scale": "Mid-Market (1k-10k)",
+    "services_appetite": "medium_risk_retail",
+    "privacy_policy_published": true,
+    "compliance_mentions": ["PCI-DSS", "CCPA"],
+    "quarterly_revenue": [25000000, 35000000, 20000000, 40000000],
+    "digital_exposure": 4,
+    "disruption_speed": 4,
+    "recovery_complexity": 3
+  },
+  "LocalShop LLC": {
+    "name": "LocalShop LLC",
+    "domain": "localshop.com",
+    "country": "Canada",
+    "revenue": 12000000,
+    "employee_count": 45,
+    "subsidiaries": [],
+    "acquisitions": [],
+    "customer_type": "B2C/B2B",
+    "has_ecommerce": true,
+    "domains": [
+      {"url": "localshop.com", "https_encrypted": false}
+    ],
+    "countries_of_operation": ["Canada"],
+    "continent_spread": ["North America"],
+    "usa_presence": false,
+    "internet_exposure_domains": 1,
+    "customer_base_scale": "SMB (<1k)",
+    "services_appetite": "high_risk_local_services",
+    "privacy_policy_published": false,
+    "compliance_mentions": [],
+    "quarterly_revenue": [3000000, 3100000, 2900000, 3000000],
+    "digital_exposure": 3,
+    "disruption_speed": 3,
+    "recovery_complexity": 2
+  }
+}
