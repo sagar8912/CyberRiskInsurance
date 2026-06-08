@@ -1,0 +1,335 @@
+# Apple 
+
+
+(venv) PS C:\Multi_agent_CyberRiskInsurance\CyberRiskInsurance> python -m src.main -n "Apple" -d "apple.com"
+
+============================================================
+============ INITIALIZING CYBER RISK PREDICTOR =============
+============================================================
+Company Target: Apple
+Primary Domain: apple.com
+
+============================================================
+================== EXECUTION TRACE & LOGS ==================
+============================================================
+  > Supervisor: Validating input - Name: 'Apple', Domain: 'apple.com'
+  > Supervisor: Enriched TLD: 'com', Detected Country: 'USA'
+  > Supervisor: Collector Cache Hit. Loading cached collector evidence.
+  > Collectors: Skipped network calls due to collector cache.
+  > Coordinator: Starting priority merge and conflict detection...
+  > Coordinator: Reconciled Revenue = $416,161,000,000 (Source: SEC)
+  > Coordinator Warning: Revenue variance (partial match): {'SEC': 416161000000, 'Wikidata': 233715000000.0}
+  > Coordinator: Reconciled Subsidiaries count = 20 (Source: SEC Exhibit 21)
+  > Coordinator Warning: Subsidiaries variance (partial match): SEC=20, Wiki=17
+  > Coordinator: Reconciled Acquisitions count = 0
+  > Coordinator: Reconciled Countries of Operation = ['United States']
+  > Coordinator: Reconciled profile generated successfully.
+  > Fact Checker: Evaluating claims and corroboration status...
+  > Fact Checker: Revenue claim has PARTIAL evidence (sources differ by <5x).
+  > Fact Checker: Subsidiaries claim has PARTIAL evidence (counts vary but both >0).
+  > Fact Checker: Acquisitions history has NO evidence (Unsupported).
+  > Fact Checker: Domain encryption claim is VERIFIED via SSL probing.
+  > Fact Checker: Geographic spread has PARTIAL evidence.
+  > Fact Checker: Sensitive information claim has NO evidence (Unsupported).
+  > Fact Checker: Calculated overall accuracy score = 0.42
+  > Underwriter: Parsing Excel guidelines and executing rules engine...
+  > Underwriter: Aggregated Average Score = 2.70 -> Risk Category: 'Favourable'
+  > Underwriter: Fact-checking Accuracy = 0.42 -> Confidence: 41.7% (Low)
+  > Underwriter Escalation: Human routing triggered! Reasons: ['Accuracy score (0.42) below 50% threshold.']
+
+============================================================
+====================== COLLECTORS RUN ======================
+============================================================
+Real Sources Used:
+DomainScraper, DBCollector, Wikipedia, SECCollector, Wikidata
+Mock Sources Used:
+No
+
+============================================================
+================ RECONCILED COMPANY PROFILE ================
+============================================================
+Reconciled Revenue:   $416,161,000,000
+Subsidiaries Count:   20
+Acquisitions Count:   0
+Customer Type:        B2B
+E-commerce Platform:  False
+Countries of Ops:     United States
+Privacy Policy:       True
+
+============================================================
+============ FACT CHECKER CORROBORATION CLAIMS =============
+============================================================
+Underwriting Claim             | Status          | Source Count
+-----------------------------------------------------------------
+revenue                        | [I] Partial     | 2
+subsidiaries                   | [I] Partial     | 3
+acquisitions                   | [X] Unsupported | 0
+domain_encryption              | [OK] Verified   | 1
+geographic_spread              | [I] Partial     | 1
+sensitive_information          | [X] Unsupported | 0
+
+============================================================
+============= UNDERWRITER MODIFIER EVALUATIONS =============
+============================================================
+  * Mergers and Acquisitions: VERY FAVOURABLE (Score: 0.0)
+    Rationale: M&A points: 0.0 calculated across 0 acquisitions. Revenue tier comparison applied. 
+  * Amount of sensitive information: FAVOURABLE (Score: 0.0)
+    Rationale: Customer type: B2B, E-commerce presence: False.
+  * Domain Encryption: FAVOURABLE (Score: 1/1)
+    Rationale: HTTPS Encryption: 1 of 1 domains encrypted.
+  * Geographic Spread: FAVOURABLE (Score: 1)
+    Rationale: Operates in 1 countries across 1 continents. USA Presence: True.
+  * Internet footprint: FAVOURABLE (Score: 1.0)
+    Rationale: Footprint score: 1.0 (domains: 1 x multiplier: 1.0 based on customer scale: SMB (<1k)).
+  * Nature of services: AVERAGE (Score: medium_risk)
+    Rationale: Cyber sub-industry appetite category is 'medium_risk'.
+  * Organizational Complexity: FAVOURABLE (Score: 20)
+    Rationale: Total subsidiaries: 20 evaluated against revenue tier.
+  * Privacy Regulation: AVERAGE (Score: 0)
+    Rationale: Privacy Policy published: True, Compliance frameworks: 0 ().
+  * Seasonality of sales: AVERAGE (Score: 0.0)
+    Rationale: Fallback to SIC code 7372 benchmark: Software/services expected average seasonality.
+  * Volatility/Recovery in Sales: AVERAGE (Score: 3.0)
+    Rationale: Dimensions avg: 3.00 (Digital exposure: 3/5, Disruption speed: 3/5, Recovery complexity: 3/5).
+
+============================================================
+=========== FINAL UNDERWRITING MODIFIER VERDICT ============
+============================================================
+Entity Status:       Match
+Risk Category:       FAVOURABLE
+Underwriting Score:  41.7%
+Confidence Band:     Low
+  * Seasonality of sales: AVERAGE (Score: 0.0)
+    Rationale: Fallback to SIC code 7372 benchmark: Software/services expected average seasonality.
+  * Volatility/Recovery in Sales: AVERAGE (Score: 3.0)
+    Rationale: Dimensions avg: 3.00 (Digital exposure: 3/5, Disruption speed: 3/5, Recovery complexity: 3/5).
+
+============================================================
+=========== FINAL UNDERWRITING MODIFIER VERDICT ============
+============================================================
+Entity Status:       Match
+Risk Category:       FAVOURABLE
+Underwriting Score:  41.7%
+Confidence Band:     Low
+
+============================================================
+=========== FINAL UNDERWRITING MODIFIER VERDICT ============
+============================================================
+Entity Status:       Match
+Risk Category:       FAVOURABLE
+Underwriting Score:  41.7%
+Confidence Band:     Low
+============================================================
+Entity Status:       Match
+Risk Category:       FAVOURABLE
+Underwriting Score:  41.7%
+Confidence Band:     Low
+Human Escalation:    True
+
+
+
+
+
+2. Microsoft
+(venv) PS C:\Multi_agent_CyberRiskInsurance\CyberRiskInsurance> python -m src.main -n "microsoft" 
+-d "microsoft.com"
+
+============================================================
+============ INITIALIZING CYBER RISK PREDICTOR =============
+============================================================
+Company Target: microsoft
+Primary Domain: microsoft.com
+
+============================================================
+================== EXECUTION TRACE & LOGS ==================
+============================================================
+  > Supervisor: Validating input - Name: 'microsoft', Domain: 'microsoft.com'
+  > Supervisor: Enriched TLD: 'com', Detected Country: 'USA'
+  > Supervisor: Collector Cache Hit. Loading cached collector evidence.
+  > Collectors: Skipped network calls due to collector cache.
+  > Coordinator: Starting priority merge and conflict detection...
+  > Coordinator: Reconciled Revenue = $281,724,000,000 (Source: SEC)
+  > Coordinator Warning: Revenue variance (partial match): {'SEC': 281724000000, 'Wikidata': 93580000000.0}
+  > Coordinator: Reconciled Subsidiaries count = 12 (Source: SEC Exhibit 21)
+  > Coordinator Warning: Subsidiaries variance (partial match): SEC=12, Wiki=57
+  > Coordinator: Reconciled Acquisitions count = 0
+  > Coordinator: Reconciled Countries of Operation = ['USA', 'United States']
+  > Coordinator: Reconciled profile generated successfully.
+  > Fact Checker: Evaluating claims and corroboration status...
+  > Fact Checker: Revenue claim has PARTIAL evidence (sources differ by <5x).
+  > Fact Checker: Subsidiaries claim has PARTIAL evidence (counts vary but both >0).
+  > Fact Checker: Acquisitions history has NO evidence (Unsupported).
+  > Fact Checker: Domain encryption claim is VERIFIED via SSL probing.
+  > Fact Checker: Geographic spread claim is VERIFIED by 2 sources.
+  > Fact Checker: Sensitive information claim has NO evidence (Unsupported).
+  > Fact Checker: Calculated overall accuracy score = 0.50
+  > Underwriter: Parsing Excel guidelines and executing rules engine...
+  > Underwriter: Aggregated Average Score = 2.70 -> Risk Category: 'Favourable'
+  > Underwriter: Fact-checking Accuracy = 0.50 -> Confidence: 50.0% (Medium)
+  > Underwriter: Auto-approval path verified. No human escalation needed.
+
+============================================================
+====================== COLLECTORS RUN ======================
+============================================================
+Real Sources Used:
+DomainScraper, DBCollector, Wikipedia, SECCollector, Wikidata
+Mock Sources Used:
+No
+
+============================================================
+================ RECONCILED COMPANY PROFILE ================
+============================================================
+Reconciled Revenue:   $281,724,000,000
+Subsidiaries Count:   12
+Acquisitions Count:   0
+Customer Type:        B2B
+E-commerce Platform:  False
+Countries of Ops:     USA, United States
+Privacy Policy:       True
+
+============================================================
+============ FACT CHECKER CORROBORATION CLAIMS =============
+============================================================
+Underwriting Claim             | Status          | Source Count
+-----------------------------------------------------------------
+revenue                        | [I] Partial     | 2
+subsidiaries                   | [I] Partial     | 3
+acquisitions                   | [X] Unsupported | 0
+domain_encryption              | [OK] Verified   | 1
+geographic_spread              | [OK] Verified   | 2
+sensitive_information          | [X] Unsupported | 0
+
+============================================================
+============= UNDERWRITER MODIFIER EVALUATIONS =============
+============================================================
+  * Mergers and Acquisitions: VERY FAVOURABLE (Score: 0.0)
+    Rationale: M&A points: 0.0 calculated across 0 acquisitions. Revenue tier comparison applied. 
+  * Amount of sensitive information: FAVOURABLE (Score: 0.0)
+    Rationale: Customer type: B2B, E-commerce presence: False.
+  * Domain Encryption: FAVOURABLE (Score: 1/1)
+    Rationale: HTTPS Encryption: 1 of 1 domains encrypted.
+  * Geographic Spread: FAVOURABLE (Score: 2)
+    Rationale: Operates in 2 countries across 1 continents. USA Presence: True.
+  * Internet footprint: FAVOURABLE (Score: 1.0)
+    Rationale: Footprint score: 1.0 (domains: 1 x multiplier: 1.0 based on customer scale: SMB (<1k)).
+  * Nature of services: AVERAGE (Score: medium_risk)
+    Rationale: Cyber sub-industry appetite category is 'medium_risk'.
+  * Organizational Complexity: FAVOURABLE (Score: 12)
+    Rationale: Total subsidiaries: 12 evaluated against revenue tier.
+  * Privacy Regulation: AVERAGE (Score: 0)
+    Rationale: Privacy Policy published: True, Compliance frameworks: 0 ().
+  * Seasonality of sales: AVERAGE (Score: 0.0)
+    Rationale: Fallback to SIC code 7372 benchmark: Software/services expected average seasonality.
+  * Volatility/Recovery in Sales: AVERAGE (Score: 3.0)
+    Rationale: Dimensions avg: 3.00 (Digital exposure: 3/5, Disruption speed: 3/5, Recovery complexity: 3/5).
+
+============================================================
+=========== FINAL UNDERWRITING MODIFIER VERDICT ============
+============================================================
+Entity Status:       Match
+Risk Category:       FAVOURABLE
+Underwriting Score:  50.0%
+Confidence Band:     Medium
+Human Escalation:    False
+(venv) PS C:\Multi_agent_CyberRiskInsurance\CyberRiskInsurance> 
+
+
+3. TCS
+(venv) PS C:\Multi_agent_CyberRiskInsurance\CyberRiskInsurance> python -m src.main -n "TCS" -d "tcs.com"
+
+============================================================
+============ INITIALIZING CYBER RISK PREDICTOR =============
+============================================================
+Company Target: TCS
+Primary Domain: tcs.com
+
+============================================================
+================== EXECUTION TRACE & LOGS ==================
+============================================================
+  > Supervisor: Validating input - Name: 'TCS', Domain: 'tcs.com'
+  > Supervisor: Enriched TLD: 'com', Detected Country: 'USA'
+  > Supervisor: Collector Cache Hit. Loading cached collector evidence.
+  > Collectors: Skipped network calls due to collector cache.
+  > Coordinator: Starting priority merge and conflict detection...
+  > Coordinator: Reconciled Revenue = None (No source available)
+  > Coordinator: Reconciled Subsidiaries count = 0
+  > Coordinator: Reconciled Acquisitions count = 0
+  > Coordinator: Reconciled Countries of Operation = ['India']
+  > Coordinator: Reconciled profile generated successfully.
+  > Fact Checker: Evaluating claims and corroboration status...
+  > Fact Checker: Revenue claim has NO evidence (Unsupported).
+  > Fact Checker: Subsidiaries claim has PARTIAL evidence.
+  > Fact Checker: Acquisitions history has NO evidence (Unsupported).
+  > Fact Checker: Domain encryption claim is VERIFIED via SSL probing.
+  > Fact Checker: Geographic spread claim is VERIFIED by 2 sources.
+  > Fact Checker: Sensitive information claim has NO evidence (Unsupported).
+  > Fact Checker: Calculated overall accuracy score = 0.42
+  > Underwriter: Parsing Excel guidelines and executing rules engine...
+  > Underwriter: Aggregated Average Score = 2.60 -> Risk Category: 'Favourable'
+  > Underwriter: Fact-checking Accuracy = 0.42 -> Confidence: 41.7% (Low)
+  > Underwriter Escalation: Human routing triggered! Reasons: ['Accuracy score (0.42) below 50% threshold.']
+
+============================================================
+====================== COLLECTORS RUN ======================
+============================================================
+Real Sources Used:
+DomainScraper, DBCollector, Wikipedia, Wikidata
+Mock Sources Used:
+No
+
+============================================================
+================ RECONCILED COMPANY PROFILE ================
+============================================================
+Reconciled Revenue:   Not Available
+Subsidiaries Count:   0
+Acquisitions Count:   0
+Customer Type:        B2B
+E-commerce Platform:  False
+Countries of Ops:     India
+Privacy Policy:       True
+
+============================================================
+============ FACT CHECKER CORROBORATION CLAIMS =============
+============================================================
+Underwriting Claim             | Status          | Source Count
+-----------------------------------------------------------------
+revenue                        | [X] Unsupported | 0
+subsidiaries                   | [I] Partial     | 1
+acquisitions                   | [X] Unsupported | 0
+domain_encryption              | [OK] Verified   | 1
+geographic_spread              | [OK] Verified   | 2
+sensitive_information          | [X] Unsupported | 0
+
+============================================================
+============= UNDERWRITER MODIFIER EVALUATIONS =============
+============================================================
+  * Mergers and Acquisitions: VERY FAVOURABLE (Score: 0.0)
+    Rationale: M&A points: 0.0 calculated across 0 acquisitions. Revenue tier comparison applied. 
+  * Amount of sensitive information: FAVOURABLE (Score: 0.0)
+    Rationale: Customer type: B2B, E-commerce presence: False.
+  * Domain Encryption: FAVOURABLE (Score: 1/1)
+    Rationale: HTTPS Encryption: 1 of 1 domains encrypted.
+  * Geographic Spread: FAVOURABLE (Score: 1)
+    Rationale: Operates in 1 countries across 1 continents. USA Presence: False.
+  * Internet footprint: FAVOURABLE (Score: 1.0)
+    Rationale: Footprint score: 1.0 (domains: 1 x multiplier: 1.0 based on customer scale: SMB (<1k)).
+  * Nature of services: AVERAGE (Score: medium_risk)
+    Rationale: Cyber sub-industry appetite category is 'medium_risk'.
+  * Organizational Complexity: VERY FAVOURABLE (Score: 0)
+    Rationale: Total subsidiaries: 0 evaluated against revenue tier.
+  * Privacy Regulation: AVERAGE (Score: 0)
+    Rationale: Privacy Policy published: True, Compliance frameworks: 0 ().
+  * Seasonality of sales: AVERAGE (Score: 0.0)
+    Rationale: Fallback to SIC code 7372 benchmark: Software/services expected average seasonality.
+  * Volatility/Recovery in Sales: AVERAGE (Score: 3.0)
+    Rationale: Dimensions avg: 3.00 (Digital exposure: 3/5, Disruption speed: 3/5, Recovery complexity: 3/5).
+
+============================================================
+=========== FINAL UNDERWRITING MODIFIER VERDICT ============
+============================================================
+Entity Status:       Match
+Risk Category:       FAVOURABLE
+Underwriting Score:  41.7%
+Confidence Band:     Low
+Human Escalation:    True
+(venv) PS C:\Multi_agent_CyberRiskInsurance\CyberRiskInsurance> 
