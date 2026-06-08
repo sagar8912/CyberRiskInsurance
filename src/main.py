@@ -67,7 +67,20 @@ def main():
 
     # 2. Print Audit logs
     print_header("Execution Trace & Logs")
+    evidence_for_logs = final_state.get("collected_evidence", {})
     for log in final_state.get("audit_logs", []):
+        if log.startswith("Collectors: '") and "returned status:" in log:
+            # Try to extract the tool name and append error if present
+            try:
+                parts = log.split("'")
+                if len(parts) >= 3:
+                    tool_name = parts[1]
+                    tool_data = evidence_for_logs.get(tool_name, {})
+                    extra = tool_data.get("error") or tool_data.get("message")
+                    if extra and ("unresolved" in log or "error" in log or "skipped" in log):
+                        log = f"{log} | Error: {extra}"
+            except Exception:
+                pass
         print(f"  > {log}")
 
     # 3. Standard Run results
@@ -109,7 +122,7 @@ def main():
     print_header("Underwriter Modifier Evaluations")
     for mod, details in final_state.get("modifier_scores", {}).items():
         print(f"  * {mod}: {details.get('rating').upper()} (Score: {details.get('score')})")
-        print(f"    Rationale: {final_state.get('underwriting_rationale', {}).get(mod)}")
+        print(f"    Rationale: {final_state.get('underwriting_rationale', {}).get(mod)}\n")
 
     print_header("Final Underwriting Modifier Verdict")
     print(f"Entity Status:       {final_state.get('entity_status', 'Match')}")

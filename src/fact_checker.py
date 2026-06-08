@@ -32,6 +32,8 @@ def fact_checker_node(state: CyberRiskState) -> Dict[str, Any]:
         if val is None:
             return False
         if isinstance(val, list) and len(val) == 0:
+            if src_name == "SECCollector" and key == "subsidiaries_exhibit21":
+                return True
             return False
         if isinstance(val, dict) and len(val) == 0:  # Code Quality Fix
             return False
@@ -67,12 +69,13 @@ def fact_checker_node(state: CyberRiskState) -> Dict[str, Any]:
     sources_subs = sum(1 for src, key in [
         ("SECCollector", "subsidiaries_exhibit21"),
         ("Wikipedia", "subsidiaries"),
-        ("Wikidata", "subsidiaries"),
-        ("DBCollector", "parent_relationships")
+        ("Wikidata", "subsidiaries")
     ] if is_valid(src, key))
         
     subs_conflict = any(flag["parameter"] == "subsidiaries" for flag in conflict_flags)
     subs_partial = any(flag["parameter"] == "subsidiaries_partial" for flag in conflict_flags)
+    
+    wiki_mention_only = evidence.get("Wikipedia", {}).get("findings", {}).get("subsidiary_mention_detected", False) and not is_valid("Wikipedia", "subsidiaries")
     
     if subs_conflict:
         claims["subsidiaries"] = {"status": "[X] Contradicted", "confidence": 0.0, "sources_count": sources_subs}
@@ -86,6 +89,9 @@ def fact_checker_node(state: CyberRiskState) -> Dict[str, Any]:
     elif sources_subs == 1:
         claims["subsidiaries"] = {"status": "[I] Partial", "confidence": 0.5, "sources_count": sources_subs}
         logs.append("Fact Checker: Subsidiaries claim has PARTIAL evidence.")
+    elif wiki_mention_only:
+        claims["subsidiaries"] = {"status": "[I] Partial", "confidence": 0.5, "sources_count": sources_subs}
+        logs.append("Fact Checker: Subsidiaries claim has PARTIAL evidence (Wikipedia mention only).")
     else:
         claims["subsidiaries"] = {"status": "[X] Unsupported", "confidence": 0.0, "sources_count": 0}
         logs.append("Fact Checker: Subsidiaries claim has NO evidence (Unsupported).")
@@ -93,9 +99,7 @@ def fact_checker_node(state: CyberRiskState) -> Dict[str, Any]:
     # 3. Fact-Check Acquisitions
     sources_acq = sum(1 for src, key in [
         ("SECCollector", "sec_acquisitions"),
-        ("WebSearch", "acquisitions"),
-        ("Wikidata", "acquisitions"),
-        ("Wikipedia", "acquisitions")
+        ("WebSearch", "acquisitions")
     ] if is_valid(src, key))
         
     if sources_acq >= 2:

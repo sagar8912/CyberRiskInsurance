@@ -31,7 +31,7 @@ class WikidataCollector(BaseCollector):
                 'limit': 5
             })
             url = f'https://www.wikidata.org/w/api.php?{query}'
-            req = urllib.request.Request(url, headers={'User-Agent': 'CyberRiskBot/1.1 (contact@example.com)'})
+            req = urllib.request.Request(url, headers={'User-Agent': 'CyberRiskInsurancePOC/1.0 (https://github.com/sagar8912/CyberRiskInsurance)'})
             
             with urllib.request.urlopen(req, timeout=10) as response:
                 data = json.loads(response.read().decode())
@@ -51,7 +51,7 @@ class WikidataCollector(BaseCollector):
                 'props': 'claims|labels'
             })
             url2 = f'https://www.wikidata.org/w/api.php?{query2}'
-            req2 = urllib.request.Request(url2, headers={'User-Agent': 'CyberRiskBot/1.1 (contact@example.com)'})
+            req2 = urllib.request.Request(url2, headers={'User-Agent': 'CyberRiskInsurancePOC/1.0 (https://github.com/sagar8912/CyberRiskInsurance)'})
             
             with urllib.request.urlopen(req2, timeout=10) as response:
                 data2 = json.loads(response.read().decode())
@@ -158,7 +158,7 @@ class WikidataCollector(BaseCollector):
                         'languages': 'en'
                     })
                     url3 = f'https://www.wikidata.org/w/api.php?{query3}'
-                    req3 = urllib.request.Request(url3, headers={'User-Agent': 'CyberRiskBot/1.1 (contact@example.com)'})
+                    req3 = urllib.request.Request(url3, headers={'User-Agent': 'CyberRiskInsurancePOC/1.0 (https://github.com/sagar8912/CyberRiskInsurance)'})
                     with urllib.request.urlopen(req3, timeout=10) as response:
                         data3 = json.loads(response.read().decode())
                         for entity_id, entity_data in data3.get('entities', {}).items():
@@ -185,6 +185,10 @@ class WikidataCollector(BaseCollector):
             result["status"] = "success"
             return result
             
+        except urllib.error.HTTPError as e:
+            result["status"] = "unresolved"
+            result["error"] = f"Wikidata API failed: HTTP Error {e.code} ({e.reason})"
+            return result
         except Exception as e:
             result["status"] = "error"
             result["error"] = str(e)

@@ -73,6 +73,9 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
             contradiction_msg = f"Values differ by >5x (Max: {max_val}, Min: {min_val})"
 
     # 3. Fiscal year mismatch
+    # Note: Currently only SECCollector returns fiscal_year.
+    # This comparison will become active when other collectors start returning fiscal_year.
+    # Kept intentionally as future defensive validation logic.
     if not is_contradicted:
         fy_list = []
         if sec_findings.get("fiscal_year"): fy_list.append(int(sec_findings["fiscal_year"]))
@@ -106,7 +109,7 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
     # Combine Wikipedia and Wikidata subsidiaries if SEC is not available
     combined_wiki_subs = list(set(wiki_subs + wikidata_subs))
     
-    if sec_subs is not None and len(sec_subs) > 0:
+    if sec_subs is not None:
         reconciled["subsidiaries"] = sec_subs
         logs.append(f"Coordinator: Reconciled Subsidiaries count = {len(sec_subs)} (Source: SEC Exhibit 21)")
     elif combined_wiki_subs:
@@ -148,7 +151,7 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
         logs.append("Coordinator: Reconciled Acquisitions count = 0")
 
     # 4. Reconcile Customer Type & E-commerce
-    reconciled["customer_type"] = web_findings.get("customer_type") or resp_findings.get("customer_base_scale") or "B2B"
+    reconciled["customer_type"] = web_findings.get("customer_type") or "B2B"
     reconciled["has_ecommerce"] = web_findings.get("has_ecommerce", False) or resp_findings.get("has_ecommerce", False)
 
     # 5. Reconcile Domain HTTPS status
