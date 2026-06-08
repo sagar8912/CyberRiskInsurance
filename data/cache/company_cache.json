@@ -1,6 +1,6 @@
 {
-  "Microsoft (microsoft.com)": {
-    "name": "Microsoft",
+  "microsoft (microsoft.com)": {
+    "name": "microsoft",
     "domain": "microsoft.com",
     "collected_evidence": {
       "WebSearch": {
@@ -63,8 +63,16 @@
         "status": "success",
         "is_mock": false,
         "findings": {
+          "subsidiaries": [],
           "country": "USA"
         }
+      },
+      "Wikidata": {
+        "source": "Wikidata",
+        "status": "error",
+        "is_mock": false,
+        "findings": {},
+        "error": "HTTP Error 429: Too Many Requests"
       },
       "SECCollector": {
         "source": "SECCollector",
@@ -89,87 +97,6 @@
           "revenue": 281724000000,
           "revenue_period": "annual",
           "fiscal_year": 2025
-        }
-      },
-      "Wikidata": {
-        "source": "Wikidata",
-        "status": "success",
-        "is_mock": false,
-        "findings": {
-          "official_name": "Microsoft Corporation",
-          "country": "United States",
-          "headquarters": "Redmond",
-          "industry": [
-            "technology industry",
-            "software industry",
-            "software development",
-            "International Standard Industrial Classification",
-            "consumer electronics industry"
-          ],
-          "official_website": "https://www.microsoft.com/",
-          "parent_company": null,
-          "subsidiaries": [
-            "Xbox Game Studios",
-            "Avanade",
-            "Microsoft Algeria",
-            "Microsoft India R & D",
-            "Lionhead Studios",
-            "Microsoft Mobile",
-            "Microsoft Production Studios",
-            "Rare Ltd.",
-            "Ensemble Studios",
-            "Microsoft Store",
-            "ProClarity",
-            "Danger, Inc.",
-            "Perceptive Pixel",
-            "GreenButton",
-            "Microsoft Research Asia",
-            "Sysinternals",
-            "Massive Incorporated",
-            "Jellyfish.com",
-            "Powerset",
-            "Tellme Networks",
-            "Visio Corporation",
-            "aQuantive",
-            "Turn 10 Studios",
-            "Fast Search & Transfer",
-            "Razorfish",
-            "DATAllegro",
-            "Microsoft Kids",
-            "Microsoft Egypt",
-            "Microsoft Israel",
-            "Microsoft (United Kingdom)",
-            "Microsoft (Netherlands)",
-            "Microsoft s.r.o.",
-            "Microsoft (Ukraine)",
-            "LinkedIn Corporation",
-            "Microsoft (France)",
-            "Microsoft Ireland Research",
-            "Microsoft Global Finance",
-            "Microsoft Ireland Operations",
-            "Microsoft Online",
-            "Microsoft Operations",
-            "Microsoft Regional Sales",
-            "LinkedIn Ireland",
-            "Microsoft Saudi",
-            "Skype Technologies",
-            "Microsoft Japan",
-            "Softomotive",
-            "Dreamworks Interactive",
-            "ZeniMax Media",
-            "Microsoft Switzerland",
-            "Microsoft Canada",
-            "GitHub",
-            "Clipchamp Pty Ltd",
-            "Microsoft Morocco",
-            "Nuance Communications",
-            "Activision Blizzard",
-            "Microsoft Germany",
-            "Microsoft Experiences + Devices"
-          ],
-          "revenue": 93580000000.0,
-          "employees": 221000.0,
-          "market_cap": 407000000000.0
         }
       }
     },
@@ -200,13 +127,6 @@
           "privacy_policy_published": true,
           "compliance_mentions": []
         }
-      },
-      "SECCollector": {
-        "source": "SECCollector",
-        "status": "skipped",
-        "is_mock": false,
-        "message": "Company not found in SEC EDGAR tickers.",
-        "findings": {}
       },
       "DBCollector": {
         "source": "DBCollector",
@@ -246,8 +166,16 @@
         "status": "success",
         "is_mock": false,
         "findings": {
+          "subsidiaries": [],
           "country": "India"
         }
+      },
+      "SECCollector": {
+        "source": "SECCollector",
+        "status": "skipped",
+        "is_mock": false,
+        "message": "Company not found in SEC EDGAR tickers.",
+        "findings": {}
       },
       "Wikidata": {
         "source": "Wikidata",
@@ -267,150 +195,6 @@
           "revenue": null,
           "employees": 600000.0,
           "market_cap": null
-        }
-      }
-    },
-    "cache_type": "collector_cache"
-  },
-  "Apple (apple.com)": {
-    "name": "Apple",
-    "domain": "apple.com",
-    "collected_evidence": {
-      "WebSearch": {
-        "source": "WebSearch",
-        "status": "skipped",
-        "is_mock": false,
-        "message": "BING_API_KEY not found. WebSearch skipped.",
-        "findings": {}
-      },
-      "DomainScraper": {
-        "source": "DomainScraper",
-        "status": "success",
-        "is_mock": false,
-        "findings": {
-          "domains": [
-            {
-              "url": "apple.com",
-              "https_encrypted": true
-            }
-          ],
-          "privacy_policy_published": true,
-          "compliance_mentions": []
-        }
-      },
-      "DBCollector": {
-        "source": "DBCollector",
-        "status": "success",
-        "is_mock": false,
-        "source_type": "gleif",
-        "source_weight": 0.95,
-        "findings": {
-          "legal_name": null,
-          "lei": null,
-          "entity_status": null,
-          "country": null,
-          "legal_address": {},
-          "headquarters_address": {},
-          "registration_authority": {},
-          "legal_form": {},
-          "parent_relationships": {
-            "lei-records": {
-              "data": {
-                "type": "lei-records",
-                "id": "9695006WHN4DWDKBF403"
-              },
-              "links": {
-                "related": "https://api.gleif.org/api/v1/lei-records/9695006WHN4DWDKBF403"
-              }
-            }
-          },
-          "sic_codes": [],
-          "sic_source": "not_available_in_gleif",
-          "revenue": null,
-          "revenue_source": "not_available_in_gleif",
-          "employees": null
-        }
-      },
-      "Wikipedia": {
-        "source": "Wikipedia",
-        "status": "success",
-        "is_mock": false,
-        "findings": {}
-      },
-      "SECCollector": {
-        "source": "SECCollector",
-        "status": "success",
-        "is_mock": false,
-        "findings": {
-          "sec_acquisitions": [],
-          "subsidiaries_exhibit21": [
-            "Subsidiary 0",
-            "Subsidiary 1",
-            "Subsidiary 2",
-            "Subsidiary 3",
-            "Subsidiary 4",
-            "Subsidiary 5",
-            "Subsidiary 6",
-            "Subsidiary 7",
-            "Subsidiary 8",
-            "Subsidiary 9",
-            "Subsidiary 10",
-            "Subsidiary 11",
-            "Subsidiary 12",
-            "Subsidiary 13",
-            "Subsidiary 14",
-            "Subsidiary 15",
-            "Subsidiary 16",
-            "Subsidiary 17",
-            "Subsidiary 18",
-            "Subsidiary 19"
-          ],
-          "revenue": 416161000000,
-          "revenue_period": "annual",
-          "fiscal_year": 2025
-        }
-      },
-      "Wikidata": {
-        "source": "Wikidata",
-        "status": "success",
-        "is_mock": false,
-        "findings": {
-          "official_name": "Apple Inc.",
-          "country": "United States",
-          "headquarters": "Cupertino",
-          "industry": [
-            "software industry",
-            "consumer electronics industry",
-            "digital distribution",
-            "electronics industry",
-            "information technology industry",
-            "mobile phone industry",
-            "software development"
-          ],
-          "official_website": "https://apple.com/at/",
-          "parent_company": null,
-          "subsidiaries": [
-            "FileMaker, Inc.",
-            "Anobit",
-            "Beats Electronics",
-            "Braeburn Capital",
-            "AuthenTec",
-            "FingerWorks",
-            "Prismo Graphics",
-            "Raycer",
-            "SchemaSoft",
-            "Apple Germany",
-            "Apple Israel",
-            "Claris",
-            "Apple Store",
-            "Apple Sales International",
-            "Siri Inc.",
-            "Apple Czech",
-            "Apple Korea"
-          ],
-          "revenue": 233715000000.0,
-          "employees": 115000.0,
-          "market_cap": 1000000000000.0
         }
       }
     },

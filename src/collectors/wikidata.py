@@ -2,12 +2,16 @@ import urllib.request
 import urllib.parse
 import json
 from typing import Dict, Any
+from src.collectors.base import BaseCollector
 
-class WikidataCollector:
+class WikidataCollector(BaseCollector):
     """
     Queries the Wikidata Action API to extract company facts.
     Uses wbsearchentities and wbgetentities to avoid SPARQL rate limits.
     """
+    
+    def __init__(self):
+        super().__init__("Wikidata")
     
     def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
         result = {

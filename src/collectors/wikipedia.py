@@ -40,8 +40,9 @@ class WikipediaCollector(BaseCollector):
             extract = page.get("extract", "").lower()
             
             findings = {}
+            findings["subsidiaries"] = []
             if "subsidiary" in extract or "subsidiaries" in extract:
-                findings["subsidiaries"] = ["Detected via Wikipedia summary"]
+                findings["subsidiary_mention_detected"] = True
             
             if "united states" in extract or "american" in extract:
                 findings["country"] = "USA"
