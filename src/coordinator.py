@@ -72,18 +72,7 @@ def coordinator_node(state: CyberRiskState) -> Dict[str, Any]:
             is_contradicted = True
             contradiction_msg = f"Values differ by >5x (Max: {max_val}, Min: {min_val})"
 
-    # 3. Fiscal year mismatch
-    # Note: Currently only SECCollector returns fiscal_year.
-    # This comparison will become active when other collectors start returning fiscal_year.
-    # Kept intentionally as future defensive validation logic.
-    if not is_contradicted:
-        fy_list = []
-        if sec_findings.get("fiscal_year"): fy_list.append(int(sec_findings["fiscal_year"]))
-        if db_findings.get("fiscal_year"): fy_list.append(int(db_findings["fiscal_year"]))
-        if len(fy_list) >= 2 and (max(fy_list) - min(fy_list)) > 2:
-            is_contradicted = True
-            contradiction_msg = f"Fiscal years differ significantly: {fy_list}"
-            
+
     # Emit flags
     if is_contradicted:
         conflict_flags.append({
