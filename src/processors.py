@@ -1,4 +1,5 @@
 import json
+import re
 import numpy as np
 from datetime import datetime
 from typing import Dict, Any, List
@@ -270,13 +271,16 @@ class UnderwriterAgent(BaseUnderwriterAgent):
                 pts = 2.0
             
             recency = acq.get("recency_years", 5.0)
-            mult = 0.5
             if recency < 1.0:
                 mult = 2.0
             elif recency < 2.0:
                 mult = 1.5
             elif recency < 5.0:
                 mult = 1.0
+            elif recency <= 10.0:
+                mult = 0.5
+            else:
+                mult = 0.0
 
             ma_points += (pts * mult)
 
@@ -316,13 +320,16 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         # Sensitive Info
         cust_type = str(reconciled.get("customer_type", "B2B")).upper()
         has_ecom = reconciled.get("has_ecommerce", False)
-        sens_rating = "average"
-        if "B2B" in cust_type and not has_ecom:
-            sens_rating = "favourable"
-        elif "B2B" in cust_type and has_ecom:
-            sens_rating = "partially favourable"
-        elif ("B2C" in cust_type or "B2B" in cust_type) and not has_ecom:
-            sens_rating = "average"
+        if "B2C" in cust_type:
+            if has_ecom:
+                sens_rating = "partially unfavourable"
+            else:
+                sens_rating = "average"
+        elif "B2B" in cust_type:
+            if has_ecom:
+                sens_rating = "partially favourable"
+            else:
+                sens_rating = "favourable"
         else:
             sens_rating = "partially unfavourable"
         modifier_scores["Amount of sensitive information"] = {"score": 0.0, "rating": sens_rating}
@@ -463,15 +470,32 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         underwriting_rationale["Volatility/Recovery in Sales"] = f"Averaged risk index: {vol_avg:.2f}."
 
         # Applicability of Privacy Regulation (Modifier 12)
-        appl_rating = "average"
-        if has_policy or "GDPR" in mentions or "CCPA" in mentions or "HIPAA" in mentions:
+        sic_codes = reconciled.get("sic_codes", ["7372"])
+        sic = str(sic_codes[0]) if sic_codes else "7372"
+        cust_type = str(reconciled.get("customer_type", "B2B")).upper()
+        has_ecom = reconciled.get("has_ecommerce", False)
+
+        # High privacy applicability industries: IT=737x, Healthcare=80xx, Finance=6xxx
+        is_high_risk_industry = sic.startswith("737") or sic.startswith("80") or sic.startswith("6")
+
+        if not is_high_risk_industry and "B2B" in cust_type and "B2C" not in cust_type and not has_ecom:
             appl_rating = "favourable"
+        elif not is_high_risk_industry and "B2B" in cust_type and "B2C" not in cust_type:
+            appl_rating = "partially favourable"
+        else:
+            appl_rating = "average"
+
         modifier_scores["Applicability of Privacy Regulation"] = {"score": 0.0, "rating": appl_rating}
-        underwriting_rationale["Applicability of Privacy Regulation"] = f"Based on privacy policy published ({has_policy}) and compliance frameworks ({mentions})."
+        underwriting_rationale["Applicability of Privacy Regulation"] = (
+            f"Industry SIC {sic}, customer type {cust_type}, and ecommerce={has_ecom} evaluated for privacy regulation applicability."
+        )
 
         # B2C End Products
-        b2c_rating = "favourable"
-        if "B2C" in cust_type:
+        if ("B2C" in cust_type and "B2B" in cust_type) or "MIX" in cust_type:
+            b2c_rating = "partially favourable"
+        elif "B2C" in cust_type or "CONSUMER" in cust_type or "SMB" in cust_type:
+            b2c_rating = "favourable"
+        else:
             b2c_rating = "average"
         modifier_scores["B2C End Products"] = {"score": 0.0, "rating": b2c_rating}
         underwriting_rationale["B2C End Products"] = f"Target customer category is {cust_type}."
@@ -527,7 +551,10 @@ class UnderwriterAgent(BaseUnderwriterAgent):
             numeric_scores.append(score_val)
             # Use LLM rationale if available, otherwise fallback to mathematical rationale
             if name in assessment.get("underwriting_rationale", {}):
-                underwriting_rationale[name] = assessment["underwriting_rationale"][name]
+                raw_rat = assessment["underwriting_rationale"][name]
+                # Strip trailing incorrect rating words from LLM response
+                cleaned = re.sub(r'(?i)[,\s]*(very favourable|partially favourable|favourable|average|neutral|partially unfavourable|unfavourable)(?:\s*risk)?\.?$', '', raw_rat)
+                underwriting_rationale[name] = f"{cleaned}, {rat}."
 
         avg_score = sum(numeric_scores) / len(numeric_scores) if numeric_scores else 4.0
         if avg_score < 2.0: risk_category = "Very Favourable"
