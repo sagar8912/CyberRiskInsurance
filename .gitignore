@@ -24,3 +24,12 @@ data/changes/
 # Handover and local notes (optional, but CONTEXT_HANDOVER.md can be kept on Git if desired, 
 # but usually custom markdown reports for tools are ignored or committed. Keeping it commented out)
 # CONTEXT_HANDOVER.md
+# Environment variables / secrets
+.env
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Local PDF/reference files
+data/cyber_rater_modifier_summary.pdf
