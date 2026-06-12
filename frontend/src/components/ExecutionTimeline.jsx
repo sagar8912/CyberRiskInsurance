@@ -58,11 +58,20 @@ export default function ExecutionTimeline({ isLoading, hasRun }) {
               }}>
                 {isCompleted ? <Check size={14} strokeWidth={3} /> : (isCurrent ? <CircleDashed size={14} className="pulse-glow" style={{ animation: 'spin 2s linear infinite' }} /> : <span style={{ fontSize: '10px' }}>{idx + 1}</span>)}
               </div>
-              <div style={{ 
-                fontSize: '0.75rem', textAlign: 'center', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.05em',
-                color: isCompleted || isCurrent ? 'var(--text-primary)' : 'var(--text-secondary)'
-              }}>
-                {step}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                <div style={{ 
+                  fontSize: '0.75rem', textAlign: 'center', fontWeight: '600',
+                  color: isCompleted ? 'var(--text-secondary)' : (isCurrent ? 'var(--text-primary)' : 'rgba(255,255,255,0.3)')
+                }}>
+                  {step}
+                </div>
+                <div style={{ 
+                  fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '500',
+                  color: isCompleted ? 'var(--accent-cyan)' : (isCurrent ? 'var(--accent-cyan)' : 'var(--text-secondary)'),
+                  opacity: isCompleted ? 0.6 : 1
+                }}>
+                  {isCompleted ? 'Completed' : (isCurrent ? 'Running' : 'Waiting')}
+                </div>
               </div>
             </div>
           )

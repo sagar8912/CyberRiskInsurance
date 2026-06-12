@@ -107,3 +107,30 @@ The automated test suite runs local unit verification for the 13 risk modifiers 
 # Discover and run all tests
 PYTHONPATH=. .venv/bin/python3 -m unittest discover -s tests
 ```
+===
+
+## 📊 Underwriting Methodology: Code vs. Excel
+
+Here is a comparison of how the **Excel sheet** (`data/cyber_rater_modifier_summary.xlsx`) calculates rates versus how the **Python code** (`src/processors.py`) processes risk:
+
+```text
+[Reconciled Profile Data]
+           │
+           ▼
+[Evaluate Modifier Rules]  <-- Both Excel & Python use the same rules
+           │
+ ┌─────────┴─────────┐
+ ▼                   ▼
+[Excel Path]     [Python Code Path]
+ -5% (Credit)     1.0 (Very Favourable)
+  0% (Neutral)    4.0 (Average)
+ +5% (Debit)      6.0 (Unfavourable)
+ ┌─────────┴─────────┐
+ ▼                   ▼
+[Final Verdict]  [Final Verdict]
+0.92 Multiplier   FAVOURABLE Risk Category
+```
+
+* **Excel Approach:** Modifiers directly adjust the financial cost (premium) of specific coverages (e.g. -5% to +5% adjustments). The final verdict is a multiplicative factor applied to the base premium.
+* **Python Code Approach:** Modifiers are mapped to qualitative rating categories (Very Favourable = 1.0, Average = 4.0, Unfavourable = 6.0). The average score across all 13 modifiers determines the final overall risk category.
+

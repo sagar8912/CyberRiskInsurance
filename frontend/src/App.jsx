@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, AlertTriangle } from 'lucide-react';
 import Header from './components/Header';
 import CompanyInput from './components/CompanyInput';
 import VerdictCard from './components/VerdictCard';
@@ -18,12 +19,21 @@ import {
 } from './data/mockData';
 
 function App() {
-  const [company, setCompany] = useState('');
-  const [domain, setDomain] = useState('');
+  const [company, setCompany] = useState('Microsoft');
+  const [domain, setDomain] = useState('microsoft.com');
   const [isLoading, setIsLoading] = useState(false);
   const [hasRun, setHasRun] = useState(false);
   const [apiFailed, setApiFailed] = useState(false);
   const [analysisData, setAnalysisData] = useState(null);
+  const [toasts, setToasts] = useState([]);
+
+  const addToast = (message, type = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 4000);
+  };
 
   const handleRunAnalysis = async () => {
     setIsLoading(true);
@@ -46,14 +56,17 @@ function App() {
       setAnalysisData(data);
       setHasRun(true);
       setIsLoading(false);
+      addToast("Analysis completed successfully", "success");
     } catch (error) {
       console.error("Backend fetch failed. Falling back to mock data.", error);
       setApiFailed(true);
+      addToast("Backend unavailable, using mock fallback", "warning");
       
       // Simulate processing delay for mock fallback
       setTimeout(() => {
         setHasRun(true);
         setIsLoading(false);
+        addToast("Analysis completed via fallback", "success");
       }, 5000); // Increased slightly to show timeline animation
     }
   };
@@ -65,7 +78,7 @@ function App() {
 
   return (
     <div className="dashboard-container">
-      <Header isLoading={isLoading} apiFailed={apiFailed} />
+      <Header isLoading={isLoading} apiFailed={apiFailed} company={hasRun ? company : ''} domain={hasRun ? domain : ''} />
       
       <div className="top-deck">
         <CompanyInput 
@@ -89,12 +102,22 @@ function App() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <EvidenceSources hasRun={hasRun} />
           <div className="data-deck">
-            <ReconciledProfile data={activeReconciled} />
+            <ReconciledProfile data={activeReconciled} claims={activeClaims} verdict={activeVerdict} />
             <FactCheckerTable data={activeClaims} />
           </div>
           <ModifierTable data={activeModifiers} />
         </div>
       )}
+
+      {/* Toast Notifications */}
+      <div className="toast-container">
+        {toasts.map(toast => (
+          <div key={toast.id} className={`toast ${toast.type}`}>
+            {toast.type === 'success' ? <ShieldCheck size={18} /> : <AlertTriangle size={18} />}
+            {toast.message}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

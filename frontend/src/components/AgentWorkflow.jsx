@@ -78,20 +78,20 @@ export default function AgentWorkflow({ isLoading, hasRun }) {
   };
 
   const initialNodes = [
-    { id: '1', position: { x: 700, y: 0 }, type: 'agent', data: { label: 'Input', description: 'Company and domain submitted', icon: <Play size={24} />, color: '#f8fafc', rgb: '248, 250, 252', ...getStatus(1) } },
-    { id: '2', position: { x: 700, y: 130 }, type: 'agent', data: { label: 'Supervisor Agent', description: 'Validates input and prepares workflow state', icon: <Cpu size={24} />, color: 'var(--accent-cyan)', rgb: '34, 211, 238', ...getStatus(1) } },
+    { id: '1', position: { x: 700, y: 0 }, type: 'agent', data: { label: 'Input', description: 'Company and domain submitted', icon: <Play size={24} />, color: 'var(--accent-slate)', rgb: '100, 116, 139', ...getStatus(1) } },
+    { id: '2', position: { x: 700, y: 110 }, type: 'agent', data: { label: 'Supervisor Agent', description: 'Validates input and prepares workflow state', icon: <Cpu size={24} />, color: 'var(--accent-cyan)', rgb: '34, 211, 238', ...getStatus(1) } },
     
-    // Parallel Collectors
-    { id: '3', position: { x: 50, y: 260 }, type: 'agent', data: { label: 'SEC Collector', description: 'Fetches filing and financial evidence', icon: <Building2 size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
-    { id: '4', position: { x: 375, y: 260 }, type: 'agent', data: { label: 'Wikipedia Collector', description: 'Fetches public company profile', icon: <BookOpen size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
-    { id: '5', position: { x: 700, y: 260 }, type: 'agent', data: { label: 'Wikidata Collector', description: 'Fetches structured entity facts', icon: <Database size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
-    { id: '6', position: { x: 1025, y: 260 }, type: 'agent', data: { label: 'DB Collector', description: 'Fetches business metadata', icon: <Database size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
-    { id: '7', position: { x: 1350, y: 260 }, type: 'agent', data: { label: 'Domain Scraper', description: 'Checks domain, HTTPS, privacy/ecommerce signals', icon: <Globe size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
+    // Parallel Collectors (tightened horizontal spacing)
+    { id: '3', position: { x: 100, y: 220 }, type: 'agent', data: { label: 'SEC Collector', description: 'Fetches filing and financial evidence', icon: <Building2 size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
+    { id: '4', position: { x: 400, y: 220 }, type: 'agent', data: { label: 'Wikipedia Collector', description: 'Fetches public company profile', icon: <BookOpen size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
+    { id: '5', position: { x: 700, y: 220 }, type: 'agent', data: { label: 'Wikidata Collector', description: 'Fetches structured entity facts', icon: <Database size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
+    { id: '6', position: { x: 1000, y: 220 }, type: 'agent', data: { label: 'DB Collector', description: 'Fetches business metadata', icon: <Database size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
+    { id: '7', position: { x: 1300, y: 220 }, type: 'agent', data: { label: 'Domain Scraper', description: 'Checks domain, HTTPS, privacy/ecommerce signals', icon: <Globe size={24} />, color: 'var(--accent-blue)', rgb: '59, 130, 246', ...getStatus(2) } },
     
-    { id: '8', position: { x: 700, y: 390 }, type: 'agent', data: { label: 'Coordinator Agent', description: 'Merges and reconciles collector evidence', icon: <Network size={24} />, color: 'var(--accent-teal)', rgb: '20, 184, 166', ...getStatus(3) } },
-    { id: '9', position: { x: 700, y: 520 }, type: 'agent', data: { label: 'Fact Checker Agent', description: 'Corroborates key underwriting claims', icon: <ShieldCheck size={24} />, color: 'var(--accent-warning)', rgb: '245, 158, 11', ...getStatus(4) } },
-    { id: '10', position: { x: 700, y: 650 }, type: 'agent', data: { label: 'Underwriter Agent', description: 'Applies 13 modifier rules', icon: <Scale size={24} />, color: '#8b5cf6', rgb: '139, 92, 246', ...getStatus(5) } },
-    { id: '11', position: { x: 700, y: 780 }, type: 'agent', data: { label: 'Final Verdict', description: 'Generates risk category and escalation flag', icon: <Gavel size={24} />, color: 'var(--accent-success)', rgb: '16, 185, 129', ...getStatus(6) } },
+    { id: '8', position: { x: 700, y: 330 }, type: 'agent', data: { label: 'Coordinator Agent', description: 'Merges and reconciles collector evidence', icon: <Network size={24} />, color: 'var(--accent-teal)', rgb: '20, 184, 166', ...getStatus(3) } },
+    { id: '9', position: { x: 700, y: 440 }, type: 'agent', data: { label: 'Fact Checker Agent', description: 'Corroborates key underwriting claims', icon: <ShieldCheck size={24} />, color: 'var(--accent-amber)', rgb: '245, 158, 11', ...getStatus(4) } },
+    { id: '10', position: { x: 700, y: 550 }, type: 'agent', data: { label: 'Underwriter Agent', description: 'Applies 13 modifier rules', icon: <Scale size={24} />, color: 'var(--accent-purple)', rgb: '139, 92, 246', ...getStatus(5) } },
+    { id: '11', position: { x: 700, y: 660 }, type: 'agent', data: { label: 'Final Verdict', description: 'Generates risk category and escalation flag', icon: <Gavel size={24} />, color: 'var(--accent-emerald)', rgb: '16, 185, 129', ...getStatus(6) } },
   ];
 
   const getEdgeStyle = (stepRequired) => {
@@ -123,7 +123,7 @@ export default function AgentWorkflow({ isLoading, hasRun }) {
   ];
 
   return (
-    <div className="glass-panel" style={{ height: '750px', display: 'flex', flexDirection: 'column' }}>
+    <div className="glass-panel" style={{ height: '600px', display: 'flex', flexDirection: 'column' }}>
       <h2 style={{ marginBottom: '16px' }}><Network size={20} color="var(--accent-cyan)" /> Live Multi-Agent Execution Graph</h2>
       <div style={{ flex: 1, border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', background: '#05070a' }}>
         <ReactFlow
