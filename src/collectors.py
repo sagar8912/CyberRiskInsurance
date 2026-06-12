@@ -391,9 +391,20 @@ class DomainScraperCollectorAgent(BaseCollectorAgent):
         except Exception:
             ssl_valid = False
             
+        html_content = ""
+        try:
+            protocol = "https" if ssl_valid else "http"
+            url = f"{protocol}://{domain}"
+            req = urllib.request.Request(url, headers={'User-Agent': 'CyberRiskInsurancePOC/1.0'})
+            with urllib.request.urlopen(req, timeout=5) as response:
+                html_content = response.read().decode('utf-8', errors='ignore')[:10000]
+        except Exception:
+            pass
+
         raw_context = {
             "url": domain,
-            "https_encrypted": ssl_valid
+            "https_encrypted": ssl_valid,
+            "homepage_html_snippet": html_content
         }
         
         try:

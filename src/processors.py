@@ -72,6 +72,10 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             if val:
                 merged["subsidiaries"] = val
                 break
+            val_count = get_val(src, "subsidiaries_count")
+            if val_count is not None:
+                merged["subsidiaries"] = ["Exhibit 21 Subsidiary"] * val_count
+                break
 
         # Acquisitions Priority
         for src in sources_order:

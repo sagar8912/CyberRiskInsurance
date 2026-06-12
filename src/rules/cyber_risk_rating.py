@@ -21,6 +21,9 @@ Wikipedia Text:
 {format_instructions}
 Your output JSON must contain:
 - "subsidiaries": list of string names of subsidiaries mentioned.
+- "acquisitions": list of objects representing acquisitions made, each with "deal_type" (string, e.g. "minor acquisition", "material acquisition", "transitional acquisition") and "recency_years" (number, float). Use an empty list if none are mentioned.
+- "customer_type": "B2B" or "B2C" or "MIX" or null.
+- "has_ecommerce": boolean or null (whether they sell products/services online directly via digital checkout).
 - "country": string name of the primary country mentioned (e.g. USA, India).
 - "founding_year": numerical year when the company was founded (e.g. 1998), or null if not found.
 """,
@@ -31,7 +34,7 @@ WIKIPEDIA = CollectorAgentConfig(
     name="Wikipedia Collector",
     agent_type="wikipedia",
     prompt_template=WIKIPEDIA_PROMPT,
-    target_fields=["subsidiaries", "country", "founding_year"],
+    target_fields=["subsidiaries", "acquisitions", "customer_type", "has_ecommerce", "country", "founding_year"],
     source_name="Wikipedia"
 )
 
@@ -115,15 +118,17 @@ DNB = CollectorAgentConfig(
 
 DOMAIN_PROMPT = PromptTemplate(
     template="""You are an expert domain scraper parser.
-Format the following connection context for {company_name} ({domain}) into a clean JSON structure.
+Analyze the following connection details and homepage HTML snippet for {company_name} ({domain}) and extract key details.
 Context:
 {scraper_text}
 
 {format_instructions}
 Your output JSON must contain:
 - "domains": list of objects, each with "url" (string) and "https_encrypted" (boolean).
-- "privacy_policy_published": boolean (whether a privacy policy is detected).
-- "compliance_mentions": list of strings (compliance frameworks mentioned, e.g. GDPR, CCPA, HIPAA).
+- "privacy_policy_published": boolean (whether a privacy policy link or page is found in the HTML snippet or mentioned).
+- "compliance_mentions": list of strings (compliance frameworks mentioned in the HTML snippet, e.g. GDPR, CCPA, HIPAA).
+- "customer_type": "B2B" or "B2C" or "MIX" or null.
+- "has_ecommerce": boolean (whether there are e-commerce/store/checkout indicators like shopping cart, shop, pricing, payment buttons, or catalog purchase flows in the HTML snippet).
 """,
     required_vars=["company_name", "domain", "scraper_text"]
 )
@@ -132,7 +137,7 @@ DOMAIN = CollectorAgentConfig(
     name="Domain Scraper",
     agent_type="domain",
     prompt_template=DOMAIN_PROMPT,
-    target_fields=["domains", "privacy_policy_published", "compliance_mentions"],
+    target_fields=["domains", "privacy_policy_published", "compliance_mentions", "customer_type", "has_ecommerce"],
     source_name="DomainScraper"
 )
 
