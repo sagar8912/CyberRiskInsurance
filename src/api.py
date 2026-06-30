@@ -26,6 +26,10 @@ class AnalysisRequest(BaseModel):
     domain: str
 
 def format_analysis_response(final_state: dict, company_name: str, domain: str) -> dict:
+    from src.utils.logger import get_agent_logger
+    api_logger = get_agent_logger("API")
+    api_logger.info("START Response Serialization")
+
     # Write Cache on success (same as cli.py)
     if final_state.get("valid") and not final_state.get("cache_hit"):
         try:
@@ -66,18 +70,41 @@ def format_analysis_response(final_state: dict, company_name: str, domain: str) 
     # Format Modifiers
     modifier_scores = final_state.get("modifier_scores", {})
     rationales = final_state.get("underwriting_rationale", {})
+    fact_check = final_state.get("fact_check", {})
+    merged = final_state.get("merged", {})
+    risk_assess = final_state.get("risk_assessment", {})
+    collected = final_state.get("collected_evidence", {})
+    llm_prompts = final_state.get("llm_prompts", {})
+    
     modifiers_formatted = []
     idx = 1
     for mod_name, details in modifier_scores.items():
         score_str = str(details.get("score", "0.0"))
             
-        modifiers_formatted.append({
+        mod_obj = {
             "id": idx,
             "name": mod_name,
             "rating": details.get("rating", "Average").upper(),
             "score": score_str,
-            "rationale": rationales.get(mod_name, "No rationale provided.")
-        })
+            "rationale": rationales.get(mod_name, "No rationale provided."),
+            "decision_summary": rationales.get(mod_name, "No rationale provided."),
+            # Spread all inner backend fields
+            **{k: v for k, v in details.items() if k not in ["rating", "score"]}
+        }
+        
+        # Fallbacks to global logs if modifier didn't attach them
+        if "fact_checker_output" not in mod_obj:
+            mod_obj["fact_checker_output"] = fact_check.get(mod_name) or fact_check
+        if "coordinator_output" not in mod_obj:
+            mod_obj["coordinator_output"] = merged.get(mod_name) or merged
+        if "underwriter_output" not in mod_obj:
+            mod_obj["underwriter_output"] = risk_assess.get(mod_name) or risk_assess
+        if "collector_outputs" not in mod_obj:
+            mod_obj["collector_outputs"] = collected
+        if "prompt_used" not in mod_obj:
+            mod_obj["prompt_used"] = llm_prompts.get(mod_name) or llm_prompts
+            
+        modifiers_formatted.append(mod_obj)
         idx += 1
 
     # Format Final Verdict
@@ -138,7 +165,16 @@ def format_analysis_response(final_state: dict, company_name: str, domain: str) 
         "wikidata_output": wikidata_output_formatted,
         "fact_checker_claims": fact_checker_claims,
         "modifiers": modifiers_formatted,
-        "final_verdict": final_verdict
+        "final_verdict": final_verdict,
+        "logs": final_state.get("audit_logs", []),
+        "executionTimeline": [{"time": i, "event": l} for i, l in enumerate(final_state.get("audit_logs", []))],
+        "collectorOutputs": final_state.get("collected_evidence", {}),
+        "coordinatorOutput": final_state.get("merged", {}),
+        "factCheckerOutput": final_state.get("fact_check", {}),
+        "underwriterOutput": final_state.get("risk_assessment", {}),
+        "nodeStatus": final_state.get("token_summary", {}),
+        "promptResponses": final_state.get("llm_prompts", {}),
+        "executionTime": final_state.get("execution_time", None)
     }
 
 @app.post("/api/analyze")
@@ -278,6 +314,8 @@ async def analyze_company_stream(req: AnalysisRequest):
                     yield f"data: {json.dumps({'type': 'error', 'message': 'The input company name or domain is invalid.'})}\n\n"
                 else:
                     formatted = format_analysis_response(final_state, company_name, domain)
+                    from src.utils.logger import get_agent_logger
+                    get_agent_logger("API").info("START API Return")
                     yield f"data: {json.dumps({'type': 'result', 'step': 7, 'data': formatted})}\n\n"
             else:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Graph execution completed without final state.'})}\n\n"

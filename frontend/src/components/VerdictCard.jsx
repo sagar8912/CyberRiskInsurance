@@ -224,6 +224,78 @@ export default function VerdictCard({ data, modifiers = [], claims = [] }) {
           </div>
         </div>
 
+        {/* Overall Decision Summary */}
+        <div style={{ marginTop: '32px', padding: '24px', background: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
+          <h3 style={{ margin: '0 0 16px 0', color: '#0F172A', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Info size={18} color="var(--accent-orange)" /> Overall Decision Summary
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px' }}>
+            
+            {/* Summary Text */}
+            <div>
+              <div style={{ fontSize: '0.85rem', color: '#334155', lineHeight: '1.6' }}>
+                {data.overall_summary || `The company was assigned a ${data.riskCategory} risk tier based on the aggregation of all evaluated cyber risk factors.`}
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+              <div>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748B', fontWeight: '800', marginBottom: '8px' }}>Highest Risk Modifiers</div>
+                <div style={{ fontSize: '0.85rem', color: '#334155', lineHeight: '1.6' }}>
+                  {keyConcerns.length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                      {keyConcerns.map((m, i) => <li key={i}>{m.name}</li>)}
+                    </ul>
+                  ) : 'None identified'}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748B', fontWeight: '800', marginBottom: '8px' }}>Lowest Risk Modifiers</div>
+                <div style={{ fontSize: '0.85rem', color: '#334155', lineHeight: '1.6' }}>
+                  {riskDrivers.length > 0 ? (
+                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                      {riskDrivers.map((m, i) => <li key={i}>{m.name}</li>)}
+                    </ul>
+                  ) : 'None identified'}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748B', fontWeight: '800', marginBottom: '8px' }}>Evidence Used</div>
+                <div style={{ fontSize: '0.85rem', color: '#334155', lineHeight: '1.6' }}>
+                  {data.evidence_used ? (
+                    <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                      {data.evidence_used.map((e, i) => <li key={i}>{e}</li>)}
+                    </ul>
+                  ) : (
+                    `${verifiedClaims} fully verified claims across ${modifiers.length} modifiers, corroborated by the consensus engine using primary open source intelligence.`
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#64748B', fontWeight: '800', marginBottom: '8px' }}>Overall Confidence</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ 
+                    fontSize: '0.85rem', 
+                    color: scoreNum >= 90 ? '#059669' : scoreNum >= 70 ? '#D97706' : '#DC2626', 
+                    fontWeight: '800', 
+                    background: scoreNum >= 90 ? '#ECFDF5' : scoreNum >= 70 ? '#FEF3C7' : '#FEF2F2',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    border: `1px solid ${scoreNum >= 90 ? '#A7F3D0' : scoreNum >= 70 ? '#FDE68A' : '#FECACA'}`
+                  }}>
+                    {scoreNum}%
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#475569', fontWeight: '500' }}>Aggregated across all modifiers</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         {/* Final Verdict Explanation Collapsible Section */}
         <div style={{ marginTop: '32px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px' }}>
           <button 
