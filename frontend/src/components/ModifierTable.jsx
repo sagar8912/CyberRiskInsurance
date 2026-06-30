@@ -224,13 +224,107 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                           {/* Decision Summary */}
                           <div style={cardStyle}>
                             <h4 style={cardHeaderStyle}>Decision Summary</h4>
-                            <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: '1.5' }}>
-                              {mod.summary || mod.rationale || 'Not Available'}
-                            </div>
-                            {mod.conclusion && (
-                              <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #F1F5F9', fontSize: '0.85rem', color: '#475569', lineHeight: '1.5' }}>
-                                <strong>Conclusion:</strong> {mod.conclusion}
-                              </div>
+                            {typeof mod.rationale === 'object' && mod.rationale !== null ? (
+                              <>
+                                <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: '1.5', marginBottom: '16px' }}>
+                                  {mod.rationale.decision_summary}
+                                </div>
+                                
+                                {/* Input Values */}
+                                <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <h5 style={{ margin: 0, fontSize: '0.8rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>Input Values <span style={{ color: '#94A3B8' }}>↓</span></h5>
+                                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', background: '#F8FAFC', padding: '8px', borderRadius: '4px' }}>
+                                    {(mod.rationale.input_values || mod.rationale.rule_evaluation) && Object.entries(mod.rationale.input_values || mod.rationale.rule_evaluation).map(([k, v]) => (
+                                      <div key={k} style={{ display: 'flex', flexDirection: 'column' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '600' }}>{k}</span>
+                                        <span style={{ fontSize: '0.8rem', color: '#0F172A', fontWeight: '500' }}>{v}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                
+                                {/* Rule Conditions (Matched Rule) */}
+                                <div style={{ borderTop: '1px solid #F1F5F9', marginTop: '12px', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <h5 style={{ margin: 0, fontSize: '0.8rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>Rule Conditions <span style={{ color: '#94A3B8' }}>↓</span></h5>
+                                  <div style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: '500', background: '#F8FAFC', padding: '8px', borderRadius: '4px' }}>
+                                    {mod.rationale.rule_conditions && Array.isArray(mod.rationale.rule_conditions) ? (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                        {mod.rationale.rule_conditions.map((cond, i) => (
+                                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', paddingBottom: '4px', borderBottom: i < mod.rationale.rule_conditions.length - 1 ? '1px solid #E2E8F0' : 'none' }}>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                              {i > 0 && <span style={{ color: '#64748B', fontSize: '0.75rem', fontWeight: 'bold', marginTop: '2px' }}>AND</span>}
+                                              <span>{cond}</span>
+                                            </div>
+                                            <span style={{ color: '#16A34A', fontWeight: 'bold', fontSize: '0.75rem', whiteSpace: 'nowrap' }}>PASS ✓</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      mod.rationale.rule_conditions || mod.rationale.matched_rule
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Matched Bucket */}
+                                <div style={{ borderTop: '1px solid #F1F5F9', marginTop: '12px', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                      <h5 style={{ margin: 0, fontSize: '0.8rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>Matched Bucket <span style={{ color: '#94A3B8' }}>↓</span></h5>
+                                      <span style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: '600', marginTop: '4px' }}>{mod.rationale.rule_name || mod.rationale.matched_bucket}</span>
+                                      {mod.rationale.rule_description && (
+                                        <div style={{ fontSize: '0.8rem', color: '#64748B', marginTop: '4px', whiteSpace: 'pre-line' }}>{mod.rationale.rule_description.replace(/\\n/g, '\n')}</div>
+                                      )}
+                                      <div style={{ fontSize: '0.85rem', color: '#0F172A', marginTop: '6px' }}><strong>Assigned Category:</strong> {mod.rationale.assigned_category}</div>
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                      <span style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: '600', textTransform: 'uppercase' }}>Rule ID</span>
+                                      <span style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: '800', background: '#E2E8F0', padding: '2px 6px', borderRadius: '4px', marginTop: '2px' }}>{mod.rationale.rule_id || mod.rationale.matched_bucket}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Assigned Category */}
+                                <div style={{ borderTop: '1px solid #F1F5F9', marginTop: '12px', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <h5 style={{ margin: 0, fontSize: '0.8rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>Assigned Category <span style={{ color: '#94A3B8' }}>↓</span></h5>
+                                  <div style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: '700' }}>{mod.rationale.assigned_category}</div>
+                                </div>
+                                
+                                {/* Business Explanation */}
+                                <div style={{ borderTop: '1px solid #F1F5F9', marginTop: '12px', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  <h5 style={{ margin: 0, fontSize: '0.8rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Business Explanation</h5>
+                                  <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: '1.5', whiteSpace: 'pre-line' }}>{mod.rationale.reason || mod.rationale.why}</div>
+                                  
+                                  {mod.rationale.business_impact && (
+                                    <>
+                                      <h5 style={{ margin: '8px 0 0 0', fontSize: '0.8rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Business Impact</h5>
+                                      <ul style={{ margin: '4px 0 0 0', paddingLeft: '20px', fontSize: '0.85rem', color: '#475569', lineHeight: '1.5' }}>
+                                        {Array.isArray(mod.rationale.business_impact) ? mod.rationale.business_impact.map((impact, i) => (
+                                          <li key={i} style={{ marginBottom: '4px' }}>{impact}</li>
+                                        )) : (
+                                          <li>{mod.rationale.business_impact}</li>
+                                        )}
+                                      </ul>
+                                    </>
+                                  )}
+                                </div>
+                                
+                                {mod.rationale.conclusion && (
+                                  <div style={{ borderTop: '1px solid #F1F5F9', marginTop: '12px', paddingTop: '12px', fontSize: '0.85rem', color: '#0F172A', fontWeight: '600' }}>
+                                    Conclusion: <span style={{ fontWeight: '400', color: '#475569' }}>{mod.rationale.conclusion}</span>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <div style={{ fontSize: '0.85rem', color: '#475569', lineHeight: '1.5' }}>
+                                  {mod.summary || mod.rationale || 'Not Available'}
+                                </div>
+                                {mod.conclusion && (
+                                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #F1F5F9', fontSize: '0.85rem', color: '#475569', lineHeight: '1.5' }}>
+                                    <strong>Conclusion:</strong> {mod.conclusion}
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
 
@@ -244,12 +338,13 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                           <div style={{ ...cardStyle, background: '#ECFDF5', borderColor: '#A7F3D0' }}>
                             <h4 style={{ ...cardHeaderStyle, color: '#059669' }}>Positive Factors</h4>
                             {(() => {
-                              let pf = mod.positive_factors || mod.strengths || mod.advantages || mod.supporting_points || mod.underwriting_rationale;
+                              const ratObj = typeof mod.rationale === 'object' && mod.rationale !== null ? mod.rationale : null;
+                              let pf = mod.positive_factors || (ratObj && ratObj.positive_factors);
                               let hasPf = pf && (Array.isArray(pf) ? pf.length > 0 : true);
                               
-                              if (!hasPf) {
+                              if (!hasPf && !ratObj) {
                                 const rat = mod.rationale || mod.summary || mod.decision_summary || "";
-                                if (rat.toLowerCase().includes('positive') || rat.toLowerCase().includes('favour') || rat.toLowerCase().includes('strong')) {
+                                if (rat.toLowerCase().includes('positive') || rat.toLowerCase().includes('favour') || rat.toLowerCase().includes('strong') || rat.toLowerCase().includes('mature')) {
                                    pf = [ rat ];
                                    hasPf = true;
                                 }
@@ -260,8 +355,7 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                               }
                               
                               if (!hasPf) {
-                                console.warn(`[Missing Positive Factors] No positive factors found for modifier: ${mod.name}`);
-                                return <div style={{ fontSize: '0.85rem', color: '#065F46', fontStyle: 'italic' }}>No positive factors identified.</div>;
+                                return <div style={{ fontSize: '0.85rem', color: '#065F46', fontStyle: 'italic' }}>No positive factors returned by backend.</div>;
                               }
                               return (
                                 <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#065F46' }}>
@@ -277,10 +371,11 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                           <div style={{ ...cardStyle, background: '#FEF2F2', borderColor: '#FECACA' }}>
                             <h4 style={{ ...cardHeaderStyle, color: '#DC2626' }}>Risk Factors</h4>
                             {(() => {
-                              let rf = mod.risk_factors || mod.weaknesses || mod.negative_points || mod.concerns || mod.risk_summary;
+                              const ratObj = typeof mod.rationale === 'object' && mod.rationale !== null ? mod.rationale : null;
+                              let rf = mod.risk_factors || (ratObj && ratObj.risk_factors);
                               let hasRf = rf && (Array.isArray(rf) ? rf.length > 0 : true);
                               
-                              if (!hasRf) {
+                              if (!hasRf && !ratObj) {
                                 const rat = mod.rationale || mod.summary || mod.decision_summary || "";
                                 if (rat.toLowerCase().includes('negative') || rat.toLowerCase().includes('unfavour') || rat.toLowerCase().includes('risk') || rat.toLowerCase().includes('regulatory complexity') || rat.toLowerCase().includes('large attack surface') || rat.toLowerCase().includes('high exposure')) {
                                    rf = [ rat ];
@@ -293,8 +388,7 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                               }
                               
                               if (!hasRf) {
-                                console.warn(`[Missing Risk Factors] No risk factors found for modifier: ${mod.name}`);
-                                return <div style={{ fontSize: '0.85rem', color: '#991B1B', fontStyle: 'italic' }}>No specific risk factors identified.</div>;
+                                return <div style={{ fontSize: '0.85rem', color: '#991B1B', fontStyle: 'italic' }}>No risk factors returned by backend.</div>;
                               }
                               return (
                                 <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#991B1B' }}>
@@ -331,11 +425,13 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                               
                               {adminExpanded[mod.id] && (
                                 (() => {
+                                  const ratObj = typeof mod.rationale === 'object' && mod.rationale !== null ? mod.rationale : null;
                                   const adminData = {
                                     calculation: [
                                       { label: 'Raw Score', value: mod.score },
                                       { label: 'Formula', value: meta.logic },
-                                      { label: 'Scale', value: meta.scale }
+                                      { label: 'Scale', value: meta.scale },
+                                      { label: 'Rule ID', value: ratObj?.rule_id || ratObj?.matched_bucket }
                                     ].filter(x => x.value),
                                     execution: [
                                       { label: 'Execution Time', value: mod.execution_time },
@@ -354,6 +450,10 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
                                       { label: 'Warnings', value: mod.warnings || mod.warning }
                                     ].filter(x => x.value)
                                   };
+                                  
+                                  const backendCategory = ratObj?.assigned_category || 'N/A';
+                                  const frontendCategory = r; // `r` is the calculated category string at the top of the render block
+                                  const mappingMatch = backendCategory.toUpperCase() === frontendCategory.toUpperCase();
 
                                   const hasAdminData = adminData.calculation.length > 0 || adminData.execution.length > 0 || adminData.reasoning.length > 0 || adminData.backend.length > 0;
 
@@ -386,6 +486,28 @@ export default function ModifierTable({ data, isAdminMode, verdictData }) {
 
                                   return (
                                     <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #334155' }}>
+                                      {/* Backend Mapping Check */}
+                                      <div style={{ marginBottom: '16px', background: '#020617', padding: '12px', borderRadius: '6px', border: '1px solid #334155' }}>
+                                        <h5 style={{ margin: '0 0 8px 0', color: '#F8FAFC', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          Backend Mapping Check
+                                        </h5>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem' }}>
+                                          <div>
+                                            <span style={{ color: '#94A3B8' }}>Backend Category:</span>
+                                            <div style={{ color: '#38BDF8', fontWeight: 'bold' }}>{backendCategory}</div>
+                                          </div>
+                                          <div>
+                                            <span style={{ color: '#94A3B8' }}>Frontend Category:</span>
+                                            <div style={{ color: '#38BDF8', fontWeight: 'bold' }}>{frontendCategory}</div>
+                                          </div>
+                                          <div style={{ gridColumn: '1 / -1', marginTop: '4px', paddingTop: '8px', borderTop: '1px solid #1E293B', display: 'flex', justifyContent: 'space-between' }}>
+                                            <span style={{ color: '#94A3B8' }}>Status:</span>
+                                            <span style={{ color: mappingMatch ? '#10B981' : '#EF4444', fontWeight: 'bold' }}>
+                                              {mappingMatch ? 'Match ✓' : 'Mismatch ⚠'}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
                                       {renderSection('Calculation', adminData.calculation)}
                                       {renderSection('Execution', adminData.execution)}
                                       {renderSection('Reasoning', adminData.reasoning)}

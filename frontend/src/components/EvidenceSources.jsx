@@ -1,5 +1,25 @@
 import React, { useState } from 'react';
 
+const RELIABILITY_MAP = {
+  'SECCollector': '★★★★★',
+  'DBCollector': '★★★★★',
+  'System': '★★★★★',
+  'Wikidata': '★★★★☆',
+  'DomainScraper': '★★★☆☆',
+  'ResponsesAPI': '★★★☆☆',
+  'Wikipedia': '★★★☆☆'
+};
+
+const PRIORITY_MAP = {
+  'SECCollector': 1,
+  'DBCollector': 2,
+  'System': 3,
+  'Wikidata': 4,
+  'DomainScraper': 5,
+  'ResponsesAPI': 6,
+  'Wikipedia': 7
+};
+
 const normalizeUrl = (url) => {
   if (!url) return null;
   let cleanUrl = String(url).trim().toLowerCase();
@@ -24,97 +44,176 @@ const extractEvidenceLinks = (mod) => {
   const co = mod.collector_outputs || {};
   const modNameLow = mod.name ? mod.name.toLowerCase() : '';
 
-  const addLink = (title, collector, summary, url) => {
-    rawLinks.push({ title, collector, evidence: summary, url, status: 'Verified' });
+  const formatEv = (obj, key) => {
+    if (!obj || obj[key] === undefined || obj[key] === null || obj[key] === '') return null;
+    const val = obj[key];
+    
+    if (Array.isArray(val)) {
+      const cleanVal = val.filter(v => v !== null && v !== undefined && v !== '');
+      if (cleanVal.length === 0) return null;
+      if (typeof cleanVal[0] === 'object' && cleanVal[0] !== null) {
+        if (key === 'acquisitions') return cleanVal.map(a => `${a.name || a.title || 'Unknown'} (Acquired ${a.recency_years ? new Date().getFullYear() - Math.floor(a.recency_years) : 'Unknown'})`).join('\n');
+        if (key === 'domains') return cleanVal.map(d => `${d.url || d} (HTTPS: ${d.https_encrypted ? 'Yes' : 'No'})`).join('\n');
+        if (key === 'subsidiaries' || key === 'subsidiaries_list') return cleanVal.map(s => s.name || s.title || s).join('\n');
+        return cleanVal.map(x => JSON.stringify(x)).join('\n');
+      }
+      return cleanVal.join('\n');
+    }
+    
+    if (typeof val === 'object' && val !== null) {
+      if (Object.keys(val).length === 0) return null;
+      return Object.entries(val).map(([k,v]) => `${k}: ${v}`).join('\n');
+    }
+    
+    if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+    if (String(val).trim() === '') return null;
+    if (String(val).trim() === '[]') return null;
+    if (String(val).trim() === '{}') return null;
+    return String(val);
   };
 
-  // 1. Modifier-specific mapping (Aggressively filtered)
+  const addLink = (topic, collector, field_type, summary, url) => {
+    if (!summary) return;
+    if (String(summary).trim() === '' || String(summary) === '[]' || String(summary) === '{}') return;
+    
+    let finalUrl = url;
+    if (!finalUrl) {
+      if (collector === 'Wikipedia') finalUrl = co.Wikipedia?.findings?.url || mod.wikipedia_url;
+      else if (collector === 'Wikidata') finalUrl = co.Wikidata?.findings?.url || co.Wikidata?.findings?.official_website;
+      else if (collector === 'SECCollector') finalUrl = co.SECCollector?.findings?.filing_url || mod.filing_url;
+      else if (collector === 'DomainScraper') finalUrl = mod.official_website || mod.url;
+    }
+    if (!finalUrl) {
+      finalUrl = mod.official_website || mod.url || mod.source_url || mod.filing_url || mod.wikipedia_url || null;
+    }
+    rawLinks.push({ topic, collector, field_type, evidence: summary, url: finalUrl, status: 'Verified', priority: PRIORITY_MAP[collector] || 99 });
+  };
+
   if (modNameLow.includes('acquisitions') || modNameLow.includes('mergers')) {
-     if (co.Wikipedia?.findings?.acquisitions) addLink('Wikipedia Company Profile', 'Wikipedia', 'Acquisitions data extracted', co.Wikipedia.findings.url || mod.wikipedia_url);
-     if (co.Wikidata?.findings?.acquisitions) addLink('Wikidata Company Data', 'Wikidata', 'Acquisitions verified', co.Wikidata.findings.official_website || mod.official_website);
-     if (co.ResponsesAPI?.findings?.acquisitions) addLink('Acquisition Evidence', 'ResponsesAPI', 'Acquisitions verified via API', null);
-     if (co.SECCollector?.findings?.acquisitions) addLink('SEC Filing', 'SECCollector', 'Acquisition mentions extracted from SEC filing', co.SECCollector.findings.filing_url || mod.filing_url);
+     addLink('Acquisitions', 'Wikipedia', 'acquisitions', formatEv(co.Wikipedia?.findings, 'acquisitions'), null);
+     addLink('Acquisitions', 'Wikidata', 'acquisitions', formatEv(co.Wikidata?.findings, 'acquisitions'), null);
+     addLink('Acquisitions', 'ResponsesAPI', 'acquisitions', formatEv(co.ResponsesAPI?.findings, 'acquisitions'), null);
+     addLink('Acquisitions', 'SECCollector', 'acquisitions', formatEv(co.SECCollector?.findings, 'acquisitions'), null);
   }
   
   if (modNameLow.includes('sensitive information') || modNameLow.includes('b2c')) {
-     if (co.DomainScraper?.findings?.customer_type) addLink('Customer Segments', 'DomainScraper', `Customer type: ${co.DomainScraper.findings.customer_type}`, mod.official_website);
-     if (co.DomainScraper?.findings?.has_ecommerce) addLink('Ecommerce Evidence', 'DomainScraper', 'Ecommerce functionality detected', mod.official_website);
-     if (co.DomainScraper?.findings?.privacy_policy_url) addLink('Privacy Policy', 'DomainScraper', 'Privacy policy published', co.DomainScraper.findings.privacy_policy_url);
-     if (mod.official_website) addLink('Official Website', 'System', 'Official domain verified', mod.official_website);
+     addLink('Customer Segments', 'DomainScraper', 'customer_type', formatEv(co.DomainScraper?.findings, 'customer_type'), null);
+     addLink('Ecommerce Evidence', 'DomainScraper', 'ecommerce', formatEv(co.DomainScraper?.findings, 'has_ecommerce'), null);
+     addLink('Privacy Policy', 'DomainScraper', 'privacy_policy_url', formatEv(co.DomainScraper?.findings, 'privacy_policy_url'), co.DomainScraper?.findings?.privacy_policy_url);
+     addLink('Official Website', 'System', 'official_website', mod.official_website ? mod.official_website : null, mod.official_website);
   }
 
   if (modNameLow.includes('domain encryption') || modNameLow.includes('internet footprint')) {
-     if (co.DomainScraper?.findings?.domains) addLink('Domain Scan', 'DomainScraper', 'HTTPS checked domains / domains discovered', mod.official_website);
-     if (mod.official_website) addLink('Official Website', 'System', 'Official domain verified', mod.official_website);
+     addLink('Domain Scan', 'DomainScraper', 'domain_list', formatEv(co.DomainScraper?.findings, 'domains'), null);
+     addLink('Official Website', 'System', 'official_website', mod.official_website ? mod.official_website : null, mod.official_website);
   }
 
   if (modNameLow.includes('geographic spread')) {
-     if (co.Wikidata?.findings?.official_website) addLink('Wikidata Official Website', 'Wikidata', 'Verified domain mapping', co.Wikidata.findings.official_website);
-     if (co.Wikipedia?.findings?.countries) addLink('Wikipedia Countries of Operation', 'Wikipedia', 'Countries of operation extracted', co.Wikipedia.findings.url || mod.wikipedia_url);
-     if (co.DBCollector?.findings?.headquarters) addLink('DB Country Source', 'DBCollector', `Headquarters: ${co.DBCollector.findings.headquarters}`, null);
+     addLink('Official Website', 'Wikidata', 'official_website', formatEv(co.Wikidata?.findings, 'official_website'), co.Wikidata?.findings?.official_website);
+     addLink('Countries of Operation', 'Wikipedia', 'countries_of_operation', formatEv(co.Wikipedia?.findings, 'countries'), null);
+     addLink('Headquarters', 'DBCollector', 'headquarters_country', formatEv(co.DBCollector?.findings, 'headquarters'), null);
   }
 
   if (modNameLow.includes('nature of services')) {
-     if (co.DomainScraper?.findings?.products) addLink('Products/Services', 'DomainScraper', 'Products and services extracted', mod.official_website);
-     if (co.Wikidata?.findings?.industry) addLink('Wikidata Industry', 'Wikidata', `Industry: ${co.Wikidata.findings.industry}`, mod.official_website);
-     if (co.Wikipedia?.findings?.industry) addLink('Wikipedia Industry Classification', 'Wikipedia', `Industry: ${co.Wikipedia.findings.industry}`, co.Wikipedia.findings.url || mod.wikipedia_url);
-     if (mod.official_website) addLink('Official Website', 'System', 'Official domain verified', mod.official_website);
+     addLink('Products and Services', 'DomainScraper', 'products', formatEv(co.DomainScraper?.findings, 'products'), null);
+     addLink('Industry Classification', 'Wikidata', 'industry', formatEv(co.Wikidata?.findings, 'industry'), null);
+     addLink('Industry Classification', 'Wikipedia', 'industry', formatEv(co.Wikipedia?.findings, 'industry'), null);
+     addLink('Business Segments', 'SECCollector', 'business_segments', formatEv(co.SECCollector?.findings, 'business_segments'), null);
+     addLink('Official Website', 'System', 'official_website', mod.official_website ? mod.official_website : null, mod.official_website);
   }
   
   if (modNameLow.includes('complexity')) {
-     if (co.SECCollector?.findings?.subsidiaries) addLink('SEC Subsidiaries', 'SECCollector', 'Subsidiaries extracted from SEC filing', co.SECCollector.findings.filing_url || mod.filing_url);
-     if (co.Wikipedia?.findings?.subsidiaries) addLink('Wikipedia Subsidiaries', 'Wikipedia', 'Subsidiaries extracted', co.Wikipedia.findings.url || mod.wikipedia_url);
-     if (co.Wikidata?.findings?.subsidiaries) addLink('Wikidata Subsidiaries', 'Wikidata', 'Subsidiaries verified', mod.official_website);
+     addLink('Subsidiaries', 'SECCollector', 'subsidiaries', formatEv(co.SECCollector?.findings, 'subsidiaries'), null);
+     addLink('Subsidiaries', 'SECCollector', 'subsidiaries', formatEv(co.SECCollector?.findings, 'subsidiaries_list'), null);
+     addLink('Subsidiaries', 'Wikipedia', 'subsidiaries', formatEv(co.Wikipedia?.findings, 'subsidiaries'), null);
+     addLink('Subsidiaries', 'Wikidata', 'subsidiaries', formatEv(co.Wikidata?.findings, 'subsidiaries'), null);
   }
   
   if (modNameLow.includes('privacy regulation')) {
-     if (co.DomainScraper?.findings?.privacy_policy_url || mod.privacy_policy_url) addLink('Privacy Policy', 'DomainScraper', 'Privacy policy published', co.DomainScraper?.findings?.privacy_policy_url || mod.privacy_policy_url);
-     if (co.DomainScraper?.findings?.terms_url || mod.terms_url) addLink('Terms Page', 'DomainScraper', 'Terms page found', co.DomainScraper?.findings?.terms_url || mod.terms_url);
-     if (co.DomainScraper?.findings?.compliance) addLink('Compliance Mentions', 'DomainScraper', 'Compliance frameworks verified', mod.official_website);
+     addLink('Privacy Policy', 'DomainScraper', 'privacy_policy_url', formatEv(co.DomainScraper?.findings || mod, 'privacy_policy_url'), co.DomainScraper?.findings?.privacy_policy_url || mod.privacy_policy_url);
+     addLink('Terms Page', 'DomainScraper', 'terms_url', formatEv(co.DomainScraper?.findings || mod, 'terms_url'), co.DomainScraper?.findings?.terms_url || mod.terms_url);
+     addLink('Compliance Mentions', 'DomainScraper', 'compliance', formatEv(co.DomainScraper?.findings, 'compliance'), null);
   }
   
   if (modNameLow.includes('seasonality')) {
-     if (co.SECCollector?.findings?.quarterly_revenue) addLink('SEC Filing', 'SECCollector', 'Quarterly revenue extracted', co.SECCollector.findings.filing_url || mod.filing_url);
+     addLink('Quarterly Revenue', 'SECCollector', 'quarterly_revenue', formatEv(co.SECCollector?.findings, 'quarterly_revenue'), null);
   }
 
   if (modNameLow.includes('volatility')) {
-     if (co.DomainScraper?.findings?.cloud_indicators) addLink('Cloud/SaaS Indicators', 'DomainScraper', 'Digital exposure signals extracted', mod.official_website);
-     if (mod.official_website) addLink('Official Website', 'System', 'Official domain verified', mod.official_website);
+     addLink('Cloud/SaaS Indicators', 'DomainScraper', 'cloud_indicators', formatEv(co.DomainScraper?.findings, 'cloud_indicators'), null);
+     addLink('Official Website', 'System', 'official_website', mod.official_website ? mod.official_website : null, mod.official_website);
   }
 
   if (modNameLow.includes('years in business')) {
-     if (co.DBCollector?.findings?.founding_year) addLink('DB Founding Year', 'DBCollector', `Founding year: ${co.DBCollector.findings.founding_year}`, null);
-     if (co.Wikipedia?.findings?.founding_year) addLink('Wikipedia Company Profile', 'Wikipedia', `Founding year: ${co.Wikipedia.findings.founding_year}`, co.Wikipedia.findings.url || mod.wikipedia_url);
-     if (co.Wikidata?.findings?.founding_year) addLink('Wikidata Company Data', 'Wikidata', `Founding year: ${co.Wikidata.findings.founding_year}`, mod.official_website);
+     addLink('Founding Year', 'DBCollector', 'founding_year', formatEv(co.DBCollector?.findings, 'founding_year'), null);
+     addLink('Founding Year', 'Wikipedia', 'founding_year', formatEv(co.Wikipedia?.findings, 'founding_year'), null);
+     addLink('Founding Year', 'Wikidata', 'founding_year', formatEv(co.Wikidata?.findings, 'founding_year'), null);
   }
 
-  // 2. Deduplication and Normalization
-  console.log(`Evidence before dedupe for ${mod.name}:`, rawLinks.length);
-  
-  const uniqueSources = [];
-  const seenMap = new Set();
-  
+  // 1. Group by semantic field_type
+  const fieldMap = new Map();
   rawLinks.forEach(link => {
-    let nUrl = normalizeUrl(link.url);
-    let originalUrl = nUrl ? link.url.trim() : null; // keep original case for display if needed, but nUrl is for deduping
-    if (originalUrl && !originalUrl.startsWith('http')) originalUrl = nUrl;
-    
-    const key = nUrl || `${link.title}-${link.collector}-${link.evidence}`.toLowerCase().trim();
-    
-    if (!seenMap.has(key)) {
-      seenMap.add(key);
-      uniqueSources.push({
-        title: link.title,
-        collector: link.collector,
-        evidence: typeof link.evidence === 'string' ? link.evidence : JSON.stringify(link.evidence)?.slice(0, 100),
-        url: originalUrl,
-        status: link.status
-      });
-    }
+     let ft = link.field_type;
+     // Add safe synonym mapping only where valid
+     if (['headquarters_country', 'primary_country'].includes(ft)) ft = 'country';
+     if (['official_websites'].includes(ft)) ft = 'official_website';
+     if (['customer_segment_type'].includes(ft)) ft = 'customer_type';
+     if (['has_ecommerce'].includes(ft)) ft = 'ecommerce';
+     if (['sic_industry', 'industry_classification'].includes(ft)) ft = 'industry';
+     if (['countries', 'countries_of_operation'].includes(ft)) ft = 'countries_of_operation';
+     
+     if (!fieldMap.has(ft)) fieldMap.set(ft, []);
+     fieldMap.get(ft).push(link);
   });
 
-  console.log(`Evidence after dedupe for ${mod.name}:`, uniqueSources.length);
-  return uniqueSources;
+  const uniqueSources = [];
+
+  fieldMap.forEach((links, ft) => {
+     links.sort((a, b) => a.priority - b.priority);
+     const bestLink = links[0];
+     
+     let conflictBadge = null;
+     if (links.length > 1) {
+         for (let i = 1; i < links.length; i++) {
+             const otherLink = links[i];
+             const str1 = String(bestLink.evidence).toLowerCase().replace(/\s+/g, '');
+             const str2 = String(otherLink.evidence).toLowerCase().replace(/\s+/g, '');
+             
+             // Do not show conflict badge when values are complementary rather than conflicting.
+             if (str1 !== str2 && !str1.includes(str2) && !str2.includes(str1)) {
+                 conflictBadge = {
+                     field: bestLink.topic,
+                     msg: `${otherLink.collector} returned conflicting data.`,
+                     otherCollector: otherLink.collector,
+                     otherEvidence: otherLink.evidence,
+                     selectedCollector: bestLink.collector,
+                     reason: 'Higher priority source and stronger entity match.'
+                 };
+                 console.log(`[Conflict Debug] field_type: ${ft} | Compared: ${bestLink.collector} vs ${otherLink.collector} | Values: ${bestLink.evidence} vs ${otherLink.evidence} | Decision: conflict | Reason: ${conflictBadge.reason}`);
+                 break;
+             } else {
+                 console.log(`[Conflict Debug] field_type: ${ft} | Compared: ${bestLink.collector} vs ${otherLink.collector} | Values: ${bestLink.evidence} vs ${otherLink.evidence} | Decision: complementary/ignored | Reason: values do not meaningfully differ`);
+             }
+         }
+     }
+     
+     bestLink.conflict = conflictBadge;
+     uniqueSources.push(bestLink);
+  });
+  
+  const finalSources = [];
+  const globalSeen = new Set();
+  
+  uniqueSources.forEach(link => {
+      const nUrl = normalizeUrl(link.url);
+      const key = `${link.collector}-${link.evidence}-${nUrl}`.toLowerCase().trim();
+      if (!globalSeen.has(key)) {
+          globalSeen.add(key);
+          finalSources.push(link);
+      }
+  });
+
+  return finalSources;
 };
 
 export default function EvidenceSources({ mod }) {
@@ -123,87 +222,84 @@ export default function EvidenceSources({ mod }) {
 
   const uniqueSources = extractEvidenceLinks(mod);
 
-  if (uniqueSources.length === 0 && !mod.evidence_summary) {
-    return <div style={{ color: '#94A3B8', fontSize: '0.85rem', fontStyle: 'italic' }}>No clickable source URL returned by backend for this modifier.</div>;
+  if (uniqueSources.length === 0 && (!mod.evidence_summary || mod.evidence_summary === '[]')) {
+    return <div style={{ color: '#94A3B8', fontSize: '0.85rem', fontStyle: 'italic' }}>No evidence returned.</div>;
   }
-
-  const hasClickableLink = uniqueSources.some(s => s.url);
   
-  // Group by collector
-  const grouped = {};
-  uniqueSources.forEach(src => {
-    const col = src.collector || 'System';
-    if (!grouped[col]) grouped[col] = [];
-    grouped[col].push(src);
-  });
-  
-  const collectors = Object.keys(grouped).sort();
-  
-  // Flatten for display limits but keeping group structure
   const maxVisible = 5;
   const isExpandable = uniqueSources.length > maxVisible;
-  
-  let visibleCount = 0;
+  const visibleItems = expanded ? uniqueSources : uniqueSources.slice(0, maxVisible);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      {!hasClickableLink && uniqueSources.length === 0 && (
-        <div style={{ color: '#94A3B8', fontSize: '0.85rem', fontStyle: 'italic' }}>
-          No clickable source URL returned by backend for this modifier.
-        </div>
-      )}
-
       {uniqueSources.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {collectors.map(col => {
-            const items = grouped[col];
-            const visibleItems = expanded ? items : items.filter(() => {
-               if (visibleCount < maxVisible) {
-                 visibleCount++;
-                 return true;
-               }
-               return false;
-            });
-            
-            if (visibleItems.length === 0) return null;
-
-            return (
-              <div key={col} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #E2E8F0', paddingBottom: '4px' }}>
-                  {col}
-                </div>
-                {visibleItems.map((src, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingBottom: i === visibleItems.length - 1 ? '0' : '8px' }}>
-                    <div style={{ color: '#0F172A', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ color: '#059669' }}>✓</span> {src.title}
-                    </div>
-                    <div style={{ color: '#475569', fontSize: '0.85rem' }}>
-                      Evidence: {src.evidence}
-                    </div>
-                    {src.url && (
-                      <div style={{ marginTop: '4px' }}>
-                        <a href={src.url} target="_blank" rel="noopener noreferrer" style={{
-                          display: 'inline-block', background: '#EFF6FF', color: '#3B82F6', textDecoration: 'none',
-                          padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600',
-                          border: '1px solid #BFDBFE'
-                        }}>
-                          Open {src.title}
-                        </a>
-                      </div>
-                    )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {visibleItems.map((src, i) => (
+            <div key={i} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '12px', background: '#FFFFFF', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+              
+              {/* Conflict Badge */}
+              {src.conflict && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '4px', padding: '8px', marginBottom: '12px' }}>
+                  <div style={{ color: '#EF4444', fontWeight: 'bold', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '4px' }}>
+                    ⚠️ Conflict Detected
                   </div>
-                ))}
+                  <div style={{ fontSize: '0.75rem', color: '#7F1D1D', marginBottom: '4px' }}>
+                    Field: {src.conflict.field}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#991B1B', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px' }}>
+                    <strong>{src.conflict.otherCollector}:</strong> <span>{src.conflict.otherEvidence}</span>
+                    <strong>{src.conflict.selectedCollector}:</strong> <span>{src.evidence}</span>
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: '#B91C1C', marginTop: '6px', fontStyle: 'italic' }}>
+                    Selected Source: {src.conflict.selectedCollector} <br/> Reason: {src.conflict.reason}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                <div style={{ fontWeight: '600', color: '#0F172A', fontSize: '0.9rem' }}>{src.topic}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#475569', background: '#F1F5F9', padding: '2px 8px', borderRadius: '12px', fontWeight: '600' }}>{src.collector}</div>
+                  <div style={{ fontSize: '0.65rem', color: '#F59E0B', marginTop: '2px', letterSpacing: '1px' }}>
+                    {RELIABILITY_MAP[src.collector] || '★★★☆☆'}
+                  </div>
+                </div>
               </div>
-            );
-          })}
+              
+              <div style={{ fontSize: '0.75rem', fontWeight: '600', color: '#64748B', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Evidence Summary
+              </div>
+              
+              <div style={{ fontSize: '0.85rem', color: '#0F172A', marginBottom: '12px', lineHeight: '1.5', background: '#F8FAFC', padding: '8px', borderRadius: '4px', whiteSpace: 'pre-wrap' }}>
+                {src.evidence}
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: '0.7rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  Detected by: <strong>{src.collector}</strong>
+                </div>
+                {src.url ? (
+                  <a href={src.url} target="_blank" rel="noopener noreferrer" style={{
+                    display: 'inline-block', background: '#EFF6FF', color: '#3B82F6', textDecoration: 'none',
+                    padding: '4px 12px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: '600',
+                    border: '1px solid #BFDBFE', transition: 'all 0.2s'
+                  }}>
+                    Source URL ↗
+                  </a>
+                ) : (
+                  <span style={{ fontSize: '0.75rem', color: '#94A3B8', fontStyle: 'italic' }}>No Source URL available</span>
+                )}
+              </div>
+            </div>
+          ))}
           
           {isExpandable && (
             <button 
               onClick={() => setExpanded(!expanded)}
               style={{
-                background: 'none', border: 'none', padding: '0', cursor: 'pointer',
-                color: '#3B82F6', fontSize: '0.85rem', fontWeight: '600', textAlign: 'left',
-                marginTop: '4px'
+                background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '8px', cursor: 'pointer',
+                color: '#3B82F6', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center',
+                borderRadius: '6px', transition: 'all 0.2s'
               }}
             >
               {expanded ? 'Hide sources' : `View more sources (${uniqueSources.length - maxVisible} hidden)`}
@@ -211,17 +307,8 @@ export default function EvidenceSources({ mod }) {
           )}
         </div>
       )}
-
-      {uniqueSources.length === 0 && mod.evidence_summary && (
-        <ul style={{ margin: 0, paddingLeft: '20px' }}>
-          {Array.isArray(mod.evidence_summary) 
-            ? mod.evidence_summary.map((f, i) => <li key={i}>{f}</li>)
-            : <li>{mod.evidence_summary}</li>}
-        </ul>
-      )}
     </div>
   );
 }
 
-// Export the utility so the report generator can use it
 export { extractEvidenceLinks };

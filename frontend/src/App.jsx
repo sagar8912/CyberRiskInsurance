@@ -11,7 +11,7 @@ import AgentResultCards from './components/AgentResultCards';
 import LiveAgentTelemetry from './components/LiveAgentTelemetry';
 import AdminLogsPanel from './components/AdminLogsPanel';
 import BatchAnalysisModal from './components/BatchAnalysisModal';
-import ApiComparisonPanel from './components/ApiComparisonPanel';
+
 import './components.css';
 
 import { 
@@ -234,7 +234,7 @@ function App() {
 
         {isAdminMode && showWorkflow && (
           <div className="fade-in-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
-             <ApiComparisonPanel comparisonData={analysisData?.apiComparison || []} />
+
              <AdminLogsPanel analysisData={analysisData || {}} />
           </div>
         )}
