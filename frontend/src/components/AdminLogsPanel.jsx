@@ -14,22 +14,22 @@ export default function AdminLogsPanel({ analysisData }) {
   const executionTimeline = analysisData.executionTimeline || [];
   const executionTime = analysisData.executionTime || null;
   const nodeStatus = analysisData.nodeStatus || {};
-  
+
   const downloadLogs = () => {
     let content = "=== SYSTEM EXECUTION LOGS ===\n\n";
     content += `Timestamp: ${new Date().toISOString()}\n`;
     content += `Company: ${analysisData.reconciled_profile?.company_name || 'N/A'}\n\n`;
-    
+
     if (logs.length > 0) {
       content += "--- BACKEND TRACE ---\n";
       content += logs.join('\n') + '\n\n';
     }
-    
+
     if (Object.keys(collectorOutputs).length > 0) {
       content += "--- COLLECTOR RAW OUTPUTS ---\n";
       content += JSON.stringify(collectorOutputs, null, 2) + '\n\n';
     }
-    
+
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -49,10 +49,10 @@ export default function AdminLogsPanel({ analysisData }) {
           <span style={{ fontSize: '0.75rem', color: '#94A3B8', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <ShieldAlert size={14} /> Admin Privileges Active
           </span>
-          <button 
+          <button
             onClick={downloadLogs}
             style={{
-              background: '#F26A21', color: '#FFF', border: 'none', padding: '6px 12px', 
+              background: '#F26A21', color: '#FFF', border: 'none', padding: '6px 12px',
               borderRadius: '6px', fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: '6px'
             }}
@@ -61,7 +61,7 @@ export default function AdminLogsPanel({ analysisData }) {
           </button>
         </div>
       </div>
-      
+
       <div style={{ background: '#020617', padding: '16px', borderRadius: '8px', maxHeight: '400px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.8rem', lineHeight: '1.5' }}>
         {logs.length > 0 ? (
           logs.map((log, i) => (
@@ -88,7 +88,7 @@ export default function AdminLogsPanel({ analysisData }) {
             ) : "No execution timeline available."}
           </div>
         </div>
-        
+
         <div>
           <h3 style={{ fontSize: '0.9rem', color: '#94A3B8', marginBottom: '8px' }}>Execution Stats</h3>
           <div style={{ background: '#020617', padding: '16px', borderRadius: '8px', maxHeight: '200px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748B' }}>
@@ -104,9 +104,9 @@ export default function AdminLogsPanel({ analysisData }) {
       <div style={{ marginTop: '16px' }}>
         <h3 style={{ fontSize: '0.9rem', color: '#94A3B8', marginBottom: '8px' }}>Collector Outputs</h3>
         <div style={{ background: '#020617', padding: '16px', borderRadius: '8px', maxHeight: '250px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.8rem', color: '#38BDF8', whiteSpace: 'pre-wrap' }}>
-           {Object.keys(collectorOutputs).length > 0 
-             ? JSON.stringify(collectorOutputs, null, 2) 
-             : "No collector outputs attached to payload."}
+          {Object.keys(collectorOutputs).length > 0
+            ? JSON.stringify(collectorOutputs, null, 2)
+            : "No collector outputs attached to payload."}
         </div>
       </div>
 
