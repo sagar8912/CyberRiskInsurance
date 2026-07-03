@@ -213,7 +213,7 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
         # Dynamic fallback inference for SIC codes if missing or defaulting to 7372
         final_sic = merged.get("sic_codes", [])
         if not final_sic or final_sic == ["7372"]:
-            inferred_sic = self.infer_sic_codes_dynamically(company_name, reports, final_sic)
+            inferred_sic = self.infer_sic_codes_dynamically(company_name, reports, final_sic, conflict_flags)
             logger.info(f"[COORDINATOR] Dynamic SIC inference resolved: {inferred_sic} (original was {final_sic})")
             merged["sic_codes"] = inferred_sic
 
@@ -246,16 +246,18 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             "audit_logs": state.get("audit_logs", []) + logs
         }
 
-    def infer_sic_codes_dynamically(self, company_name: str, reports: Dict[str, Any], existing_sic_codes: List[str] = None) -> List[str]:
+    def infer_sic_codes_dynamically(self, company_name: str, reports: Dict[str, Any], existing_sic_codes: List[str] = None, conflict_flags: List[Dict] = None) -> List[str]:
         # Gather all industry text indicators from Wikipedia, Wikidata, SEC
         indicators = []
+        wiki_ind = []
+        strong_ind = []
         
         # Check Wikipedia industry classification
         wiki_report = reports.get("Wikipedia", {})
         if wiki_report.get("status") == "success":
             ind_class = wiki_report.get("findings", {}).get("industry_classification", [])
             if isinstance(ind_class, list):
-                indicators.extend(ind_class)
+                wiki_ind.extend(ind_class)
                 
         # Check Wikidata industry and sub_industries
         wikidata_report = reports.get("Wikidata", {})
@@ -263,10 +265,10 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             findings = wikidata_report.get("findings", {})
             ind = findings.get("industry", [])
             if isinstance(ind, list):
-                indicators.extend(ind)
+                strong_ind.extend(ind)
             sub_ind = findings.get("sub_industries", [])
             if isinstance(sub_ind, list):
-                indicators.extend(sub_ind)
+                strong_ind.extend(sub_ind)
 
         # Check SEC segments/SIC codes
         sec_report = reports.get("SECCollector", {})
@@ -274,13 +276,28 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             findings = sec_report.get("findings", {})
             segments = findings.get("business_segments", [])
             if isinstance(segments, list):
-                indicators.extend(segments)
+                strong_ind.extend(segments)
             # Check if SEC already provided some SIC codes
             sec_sics = findings.get("sic_codes", [])
             if sec_sics and isinstance(sec_sics, list):
                 valid_sec_sics = [str(s) for s in sec_sics if str(s).strip() and str(s).strip() != "7372"]
                 if valid_sec_sics:
                     return valid_sec_sics
+
+        # Conflict check for Wikipedia noise (e.g. Apple fruit vs Apple tech)
+        wiki_text = " ".join([str(ind) for ind in wiki_ind]).lower()
+        strong_text = " ".join([str(ind) for ind in strong_ind]).lower()
+        
+        if ("agriculture" in wiki_text or "fruit" in wiki_text) and ("software" in strong_text or "technology" in strong_text or "computing" in strong_text or "electronics" in strong_text):
+            if conflict_flags is not None:
+                conflict_flags.append({
+                    "parameter": "industry",
+                    "details": f"Wikipedia returned suspicious agricultural data '{wiki_text}'. Ignored in favor of authoritative sources."
+                })
+        else:
+            indicators.extend(wiki_ind)
+            
+        indicators.extend(strong_ind)
 
         # Normalize indicators and company name to lowercase
         all_text = " ".join([company_name] + [str(ind) for ind in indicators]).lower()
@@ -379,7 +396,7 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         logs = []
         logs.append("Underwriter: Applying configuration-driven prompts and mathematical rules...")
 
-        # 1. Format LLM underwriter prompt to get qualitative assessment
+        # 1. Format LLM underwriter prompt
         prompt_vars = {
             "business_rule": self.config.business_rule,
             "inputs_json": json.dumps(reconciled),
@@ -389,701 +406,893 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         response_text = self.call_llm(prompt)
         assessment = self.parse_json(response_text)
 
-        # 2. Strict mathematical validation (Option A - no Excel file, coded directly)
+        # 2. Strict mathematical validation
         revenue = reconciled.get("revenue") or 0
         modifier_scores = {}
         underwriting_rationale = {}
 
         from src.utils.logger import get_agent_logger
+        from datetime import datetime
+
+        def get_rev_tier_name(r):
+            if r >= 1000000000: return "Mega Enterprise (>= $1B)"
+            if r >= 250000000: return "Large Enterprise (>= $250M)"
+            if r >= 50000000: return "Mid-Market (>= $50M)"
+            return "SMB (< $50M)"
+            
+        def get_rev_tier_short(r):
+            if r >= 1000000000: return "Mega Enterprise"
+            if r >= 250000000: return "Large Enterprise"
+            if r >= 50000000: return "Mid-Market"
+            return "SMB"
+
+        rev_tier = get_rev_tier_name(revenue)
+        rev_tier_short = get_rev_tier_short(revenue)
+        
+        
+        def generate_reason(category, inputs, bucket, desc):
+            bullets = ""
+            for k, v in inputs.items():
+                bullets += f"- {k} is {v}\n"
+            return f"This modifier was assigned {category} because:\n{bullets}- These values satisfy {bucket}\n\nTherefore, {desc[0].lower() + desc[1:]}"
+
+        def get_impacts(base_impact, rating):
+            rat = rating.lower()
+            if "unfavourable" in rat:
+                return [f"Increased severity for {base_impact.lower()}", "Higher potential financial liability", "Stricter underwriting limits recommended"]
+            elif "favourable" in rat:
+                return [f"Reduced exposure from {base_impact.lower()}", "Positive indicator of mature risk management", "Supports favorable pricing conditions"]
+            return [f"Average exposure regarding {base_impact.lower()}", "Standard underwriting conditions apply"]
 
         # --- 1. Mergers and Acquisitions ---
         ma_logger = get_agent_logger("Mergers and Acquisitions")
-        ma_logger.info("========================================")
-        ma_logger.info("Modifier Evaluation: Mergers and Acquisitions")
-        ma_logger.info("========================================")
-        acqs = reconciled.get("acquisitions", [])
-        ma_logger.info(f"Input: acquisitions = {json.dumps(acqs)}")
-        ma_logger.info(f"Input: revenue = {revenue}")
-        ma_logger.info("Math Logic: Points calculated by deal type and recency multiplier. Thresholds depend on revenue tier.")
-
-        ma_points = 0.0
-        for i, acq in enumerate(acqs):
-            acq_name = acq.get("name", f"Acquisition {i+1}")
-            deal_type = str(acq.get("deal_type", "minor acquisition")).lower()
-            pts = 1.0
-            if "trans" in deal_type:
-                pts = 4.0
-            elif "material" in deal_type:
-                pts = 3.0
-            elif "minor" in deal_type:
-                pts = 2.0
+        try:
+            acqs = reconciled.get("acquisitions", [])
+            ma_points = 0.0
+            for i, acq in enumerate(acqs):
+                deal_type = str(acq.get("deal_type", "minor acquisition")).lower()
+                pts = 1.0
+                if "trans" in deal_type: pts = 4.0
+                elif "material" in deal_type: pts = 3.0
+                elif "minor" in deal_type: pts = 2.0
             
-            recency = acq.get("recency_years", 5.0)
-            orig_recency = recency
-            if recency > 1900:
-                recency = datetime.now().year - recency
+                recency = acq.get("recency_years", 5.0)
+                if recency > 1900: recency = datetime.now().year - recency
             
-            mult = 0.0
-            if recency < 1.0:
-                mult = 2.0
-            elif recency < 2.0:
-                mult = 1.5
-            elif recency < 5.0:
-                mult = 1.0
-            elif recency <= 10.0:
-                mult = 0.5
-            else:
                 mult = 0.0
+                if recency < 1.0: mult = 2.0
+                elif recency < 2.0: mult = 1.5
+                elif recency < 5.0: mult = 1.0
+                elif recency <= 10.0: mult = 0.5
+                ma_points += pts * mult
 
-            acq_points = pts * mult
-            ma_points += acq_points
-            ma_logger.info(f"Processing acquisition '{acq_name}': deal_type='{deal_type}' -> base_points={pts}, recency_years={orig_recency} (elapsed={recency:.1f} yrs) -> recency_multiplier={mult}. Computed points = {acq_points:.2f}")
+            ma_rating = "average"
+            bucket = ""
+            rule_matched = []
+            range_str = ""
+            if revenue >= 1000000000:
+                rule_matched.append("Revenue >= $1,000,000,000")
+                if ma_points <= 5: ma_rating, bucket, range_str = "very favourable", "MA-01", "<= 5.0"
+                elif ma_points <= 10: ma_rating, bucket, range_str = "favourable", "MA-02", "<= 10.0"
+                elif ma_points <= 15: ma_rating, bucket, range_str = "partially favourable", "MA-03", "<= 15.0"
+                elif ma_points <= 20: ma_rating, bucket, range_str = "average", "MA-04", "<= 20.0"
+                elif ma_points <= 30: ma_rating, bucket, range_str = "partially unfavourable", "MA-05", "<= 30.0"
+                else: ma_rating, bucket, range_str = "unfavourable", "MA-06", "> 30.0"
+            elif revenue >= 250000000:
+                rule_matched.append("Revenue >= $250,000,000")
+                if ma_points <= 3: ma_rating, bucket, range_str = "very favourable", "MA-07", "<= 3.0"
+                elif ma_points <= 6: ma_rating, bucket, range_str = "favourable", "MA-08", "<= 6.0"
+                elif ma_points <= 10: ma_rating, bucket, range_str = "partially favourable", "MA-09", "<= 10.0"
+                elif ma_points <= 15: ma_rating, bucket, range_str = "average", "MA-10", "<= 15.0"
+                elif ma_points <= 20: ma_rating, bucket, range_str = "partially unfavourable", "MA-11", "<= 20.0"
+                else: ma_rating, bucket, range_str = "unfavourable", "MA-12", "> 20.0"
+            elif revenue >= 50000000:
+                rule_matched.append("Revenue >= $50,000,000")
+                if ma_points <= 2: ma_rating, bucket, range_str = "very favourable", "MA-13", "<= 2.0"
+                elif ma_points <= 4: ma_rating, bucket, range_str = "favourable", "MA-14", "<= 4.0"
+                elif ma_points <= 7: ma_rating, bucket, range_str = "partially favourable", "MA-15", "<= 7.0"
+                elif ma_points <= 10: ma_rating, bucket, range_str = "average", "MA-16", "<= 10.0"
+                elif ma_points <= 15: ma_rating, bucket, range_str = "partially unfavourable", "MA-17", "<= 15.0"
+                else: ma_rating, bucket, range_str = "unfavourable", "MA-18", "> 15.0"
+            else:
+                rule_matched.append("Revenue < $50,000,000")
+                if ma_points <= 1: ma_rating, bucket, range_str = "very favourable", "MA-19", "<= 1.0"
+                elif ma_points <= 3: ma_rating, bucket, range_str = "favourable", "MA-20", "<= 3.0"
+                elif ma_points <= 5: ma_rating, bucket, range_str = "partially favourable", "MA-21", "<= 5.0"
+                elif ma_points <= 7: ma_rating, bucket, range_str = "average", "MA-22", "<= 7.0"
+                elif ma_points <= 10: ma_rating, bucket, range_str = "partially unfavourable", "MA-23", "<= 10.0"
+                else: ma_rating, bucket, range_str = "unfavourable", "MA-24", "> 10.0"
 
-        ma_logger.info(f"Total accumulated M&A points: {ma_points:.2f}")
+            rule_matched.append(f"Calculated M&A Points {range_str}")
+            
+            p_factors, r_factors = [], []
+            if "favourable" in ma_rating: p_factors.append(f"Low volume of recent material acquisitions ({ma_points:.1f} pts)")
+            if "unfavourable" in ma_rating: r_factors.append(f"High volume of recent acquisitions generating technical debt ({ma_points:.1f} pts)")
+            if not acqs: p_factors.append("No material acquisitions detected")
 
-        ma_rating = "average"
-        if revenue >= 1000000000:
-            ma_logger.info("Revenue Tier: >= $1B")
-            ma_logger.info(f"Evaluating ma_points={ma_points:.2f} against thresholds: <=5 Very Favourable, <=10 Favourable, <=15 Partially Favourable, <=20 Average, <=30 Partially Unfavourable, >30 Unfavourable")
-            if ma_points <= 5: ma_rating = "very favourable"
-            elif ma_points <= 10: ma_rating = "favourable"
-            elif ma_points <= 15: ma_rating = "partially favourable"
-            elif ma_points <= 20: ma_rating = "average"
-            elif ma_points <= 30: ma_rating = "partially unfavourable"
-            else: ma_rating = "unfavourable"
-        elif revenue >= 250000000:
-            ma_logger.info("Revenue Tier: >= $250M")
-            ma_logger.info(f"Evaluating ma_points={ma_points:.2f} against thresholds: <=3 Very Favourable, <=6 Favourable, <=10 Partially Favourable, <=15 Average, <=20 Partially Unfavourable, >20 Unfavourable")
-            if ma_points <= 3: ma_rating = "very favourable"
-            elif ma_points <= 6: ma_rating = "favourable"
-            elif ma_points <= 10: ma_rating = "partially favourable"
-            elif ma_points <= 15: ma_rating = "average"
-            elif ma_points <= 20: ma_rating = "partially unfavourable"
-            else: ma_rating = "unfavourable"
-        elif revenue >= 50000000:
-            ma_logger.info("Revenue Tier: >= $50M")
-            ma_logger.info(f"Evaluating ma_points={ma_points:.2f} against thresholds: <=2 Very Favourable, <=4 Favourable, <=7 Partially Favourable, <=10 Average, <=15 Partially Unfavourable, >15 Unfavourable")
-            if ma_points <= 2: ma_rating = "very favourable"
-            elif ma_points <= 4: ma_rating = "favourable"
-            elif ma_points <= 7: ma_rating = "partially favourable"
-            elif ma_points <= 10: ma_rating = "average"
-            elif ma_points <= 15: ma_rating = "partially unfavourable"
-            else: ma_rating = "unfavourable"
-        else:
-            ma_logger.info("Revenue Tier: < $50M")
-            ma_logger.info(f"Evaluating ma_points={ma_points:.2f} against thresholds: <=1 Very Favourable, <=3 Favourable, <=5 Partially Favourable, <=7 Average, <=10 Partially Unfavourable, >10 Unfavourable")
-            if ma_points <= 1: ma_rating = "very favourable"
-            elif ma_points <= 3: ma_rating = "favourable"
-            elif ma_points <= 5: ma_rating = "partially favourable"
-            elif ma_points <= 7: ma_rating = "average"
-            elif ma_points <= 10: ma_rating = "partially unfavourable"
-            else: ma_rating = "unfavourable"
-
-        modifier_scores["Mergers and Acquisitions"] = {"score": ma_points, "rating": ma_rating}
-        underwriting_rationale["Mergers and Acquisitions"] = f"M&A score calculated at {ma_points:.1f} across {len(acqs)} acquisitions."
-        ma_logger.info(f"Resulting Rating: {ma_rating}")
-        ma_logger.info("========================================\n")
-
+            modifier_scores["Mergers and Acquisitions"] = {"score": ma_points, "rating": ma_rating}
+            underwriting_rationale["Mergers and Acquisitions"] = {
+                "decision_summary": f"M&A risk evaluated based on {len(acqs)} recent acquisition(s).",
+                "rule_id": bucket,
+                "rule_name": f"{rev_tier_short} - {ma_rating.title()} M&A Complexity",
+                "rule_description": f"Companies in the {rev_tier_short} tier with a M&A score {range_str} are classified as {ma_rating.title()} due to the associated integration complexity.",
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Revenue Tier": rev_tier,
+                    "Acquisitions Found": len(acqs),
+                    "Calculated M&A Points": round(ma_points, 2)
+                },
+                "matched_bucket": bucket,
+                "assigned_category": ma_rating.title(),
+                "reason": generate_reason(ma_rating.title(), {"Revenue Tier": rev_tier,
+                    "Acquisitions Found": len(acqs),
+                    "Calculated M&A Points": round(ma_points, 2)}, bucket, f"Companies in the {rev_tier_short} tier with a M&A score {range_str} are classified as {ma_rating.title()} due to the associated integration complexity."),
+                "business_impact": get_impacts("M&A IT integrations and inherited vulnerabilities", ma_rating),
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            ma_logger.error(f"Exception: {e}")
 
         # --- 2. Amount of sensitive information ---
         sens_logger = get_agent_logger("Amount of sensitive information")
-        sens_logger.info("========================================")
-        sens_logger.info("Modifier Evaluation: Amount of sensitive information")
-        sens_logger.info("========================================")
-        cust_type = str(reconciled.get("customer_type", "B2B")).upper()
-        has_ecom = reconciled.get("has_ecommerce", False)
-        sens_logger.info(f"Input: customer_type = {cust_type}")
-        sens_logger.info(f"Input: has_ecommerce = {has_ecom}")
-        sens_logger.info("Math Logic: B2C/MIX + ecommerce => partially unfavourable; B2C/MIX + no ecommerce => average; B2B + ecommerce => partially favourable; B2B + no ecommerce => favourable.")
-        
-        if "B2C" in cust_type or "MIX" in cust_type:
-            sens_logger.info(f"Customer type '{cust_type}' indicates consumer/mixed exposure.")
-            if has_ecom:
-                sens_logger.info("E-commerce is present: rating set to 'partially unfavourable'")
-                sens_rating = "partially unfavourable"
-            else:
-                sens_logger.info("No e-commerce detected: rating set to 'average'")
-                sens_rating = "average"
-        elif "B2B" in cust_type:
-            sens_logger.info(f"Customer type '{cust_type}' indicates B2B-only exposure.")
-            if has_ecom:
-                sens_logger.info("E-commerce is present: rating set to 'partially favourable'")
-                sens_rating = "partially favourable"
-            else:
-                sens_logger.info("No e-commerce detected: rating set to 'favourable'")
-                sens_rating = "favourable"
-        else:
-            sens_logger.info(f"Unknown customer type '{cust_type}': fallback rating set to 'partially unfavourable'")
-            sens_rating = "partially unfavourable"
-            
-        modifier_scores["Amount of sensitive information"] = {"score": 0.0, "rating": sens_rating}
-        underwriting_rationale["Amount of sensitive information"] = f"Customer type: {cust_type}, E-commerce presence: {has_ecom}."
-        sens_logger.info(f"Resulting Rating: {sens_rating}")
-        sens_logger.info("========================================\n")
+        try:
+            cust_type = str(reconciled.get("customer_type", "B2B")).upper()
+            has_ecom = reconciled.get("has_ecommerce", False)
 
+            rule_matched = []
+            bucket = ""
+            if "B2C" in cust_type or "MIX" in cust_type:
+                rule_matched.append(f"Customer Type == '{cust_type}'")
+                if has_ecom:
+                    sens_rating, bucket = "partially unfavourable", "SI-01"
+                    rule_matched.append("Ecommerce == True")
+                    desc = "Companies serving mixed/B2C customers through ecommerce generally process larger volumes of sensitive customer information (PII/PCI)."
+                else:
+                    sens_rating, bucket = "average", "SI-02"
+                    rule_matched.append("Ecommerce == False")
+                    desc = "Consumer-facing companies without ecommerce process PII but have reduced direct PCI exposure."
+            elif "B2B" in cust_type:
+                rule_matched.append("Customer Type == 'B2B'")
+                if has_ecom:
+                    sens_rating, bucket = "partially favourable", "SI-03"
+                    rule_matched.append("Ecommerce == True")
+                    desc = "B2B companies with ecommerce process corporate data and B2B payments, representing moderate exposure."
+                else:
+                    sens_rating, bucket = "favourable", "SI-04"
+                    rule_matched.append("Ecommerce == False")
+                    desc = "B2B companies without direct ecommerce typically hold the lowest volume of consumer PII/PCI."
+            else:
+                rule_matched.append("Customer Type == 'UNKNOWN'")
+                sens_rating, bucket = "partially unfavourable", "SI-05"
+                desc = "Unknown customer type defaults to higher sensitivity assumption."
+            
+            p_factors, r_factors = [], []
+            if "B2B" in cust_type and not has_ecom: p_factors.append("Low direct consumer PII collection footprint")
+            if "B2C" in cust_type or "MIX" in cust_type: r_factors.append("Direct collection of consumer PII")
+            if has_ecom: r_factors.append("Active e-commerce payment flows (PCI exposure)")
+
+            modifier_scores["Amount of sensitive information"] = {"score": 0.0, "rating": sens_rating}
+            underwriting_rationale["Amount of sensitive information"] = {
+                "decision_summary": f"Sensitivity evaluated based on customer type and ecommerce capabilities.",
+                "rule_id": bucket,
+                "rule_name": f"{'Consumer' if ('B2C' in cust_type or 'MIX' in cust_type) else 'B2B'} Exposure - {'E-commerce Active' if has_ecom else 'No E-commerce'}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Customer Type": cust_type,
+                    "Has Ecommerce": "Yes" if has_ecom else "No"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": sens_rating.title(),
+                "reason": generate_reason(sens_rating.title(), {"Customer Type": cust_type,
+                    "Has Ecommerce": "Yes" if has_ecom else "No"}, bucket, desc),
+                "business_impact": ["Higher privacy exposure", "Increased breach notification requirements", "Greater volume of regulatory obligations"] if "unfavourable" in sens_rating else ["Lower direct consumer privacy exposure", "Reduced individual breach notification scope"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            sens_logger.error(f"Exception: {e}")
 
         # --- 3. Domain Encryption ---
         enc_logger = get_agent_logger("Domain Encryption")
-        enc_logger.info("========================================")
-        enc_logger.info("Modifier Evaluation: Domain Encryption")
-        enc_logger.info("========================================")
-        domains = reconciled.get("domains", [])
-        total_domains = len(domains)
-        enc_logger.info(f"Input: domains = {json.dumps(domains)}")
-        enc_logger.info("Math Logic: Ratio of HTTPS encrypted domains. All encrypted => favourable; Some => partially favourable; None => average.")
-        
-        enc_count = 0
-        for d in domains:
-            url = d.get("url")
-            encrypted = d.get("https_encrypted", False)
-            if encrypted:
-                enc_count += 1
-            enc_logger.info(f"Domain '{url}' check: https_encrypted={encrypted}")
+        try:
+            domains = reconciled.get("domains", [])
+            total_domains = len(domains)
+            enc_count = sum(1 for d in domains if d.get("https_encrypted", False))
             
-        enc_rating = "average"
-        if total_domains > 0:
-            enc_logger.info(f"Encryption ratio: {enc_count}/{total_domains} domains encrypted.")
-            if enc_count == total_domains:
-                enc_logger.info("All domains are encrypted: rating set to 'favourable'")
-                enc_rating = "favourable"
-            elif enc_count > 0:
-                enc_logger.info("Some domains are encrypted: rating set to 'partially favourable'")
-                enc_rating = "partially favourable"
+            rule_matched = []
+            if total_domains > 0:
+                rule_matched.append(f"Total Domains == {total_domains} (> 0)")
+                if enc_count == total_domains:
+                    enc_rating, bucket = "favourable", "DE-01"
+                    rule_matched.append("Encrypted Domains == Total Domains (100%)")
+                    desc = "100% encryption coverage across all discovered external domains signifies strong perimeter security posture."
+                elif enc_count > 0:
+                    enc_rating, bucket = "partially favourable", "DE-02"
+                    rule_matched.append("0 < Encrypted Domains < Total Domains")
+                    desc = "Partial encryption coverage indicates potential misconfigurations or legacy unencrypted infrastructure."
+                else:
+                    enc_rating, bucket = "average", "DE-03"
+                    rule_matched.append("Encrypted Domains == 0 (0%)")
+                    desc = "0% encryption coverage across discovered domains poses a significant data-in-transit risk."
             else:
-                enc_logger.info("No domains are encrypted: rating set to 'average'")
-                enc_rating = "average"
-        else:
-            enc_logger.info("No domains registered: rating set to 'average'")
-            enc_rating = "average"
+                enc_rating, bucket = "average", "DE-04"
+                rule_matched.append("Total Domains == 0")
+                desc = "No external domains discovered. Defaulting to average baseline."
             
-        modifier_scores["Domain Encryption"] = {"score": f"{enc_count}/{total_domains}", "rating": enc_rating}
-        underwriting_rationale["Domain Encryption"] = f"HTTPS Encryption ratio: {enc_count} of {total_domains} domains encrypted."
-        enc_logger.info(f"Resulting Rating: {enc_rating}")
-        enc_logger.info("========================================\n")
+            p_factors, r_factors = [], []
+            if enc_count == total_domains and total_domains > 0: p_factors.append(f"100% of discovered external domains ({total_domains}) utilize HTTPS")
+            elif total_domains > 0: r_factors.append(f"{total_domains - enc_count} out of {total_domains} external domains lack HTTPS encryption")
 
+            modifier_scores["Domain Encryption"] = {"score": f"{enc_count}/{total_domains}", "rating": enc_rating}
+            underwriting_rationale["Domain Encryption"] = {
+                "decision_summary": f"Encryption ratio evaluated across {total_domains} discovered domain(s).",
+                "rule_id": bucket,
+                "rule_name": f"Domain Encryption - {enc_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Total Domains": total_domains,
+                    "Encrypted Domains (HTTPS)": enc_count,
+                    "Encryption Ratio": f"{(enc_count/total_domains)*100:.0f}%" if total_domains > 0 else "N/A"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": enc_rating.title(),
+                "reason": generate_reason(enc_rating.title(), {"Total Domains": total_domains,
+                    "Encrypted Domains (HTTPS)": enc_count,
+                    "Encryption Ratio": f"{(enc_count/total_domains)*100:.0f}%" if total_domains > 0 else "N/A"}, bucket, desc),
+                "business_impact": ["Strong protection against man-in-the-middle attacks", "Lower likelihood of credential interception"] if "favourable" in enc_rating else ["High risk of data-in-transit interception", "Increased potential for credential theft over unencrypted channels"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            enc_logger.error(f"Exception: {e}")
 
         # --- 4. Geographic Spread ---
         geo_logger = get_agent_logger("Geographic Spread")
-        geo_logger.info("========================================")
-        geo_logger.info("Modifier Evaluation: Geographic Spread")
-        geo_logger.info("========================================")
-        countries = reconciled.get("countries_of_operation", ["USA"])
-        c_count = len(countries)
-        continents = reconciled.get("continent_spread", ["North America"])
-        cont_count = len(continents)
-        usa_p = reconciled.get("usa_presence", True)
+        try:
+            countries = reconciled.get("countries_of_operation", ["USA"])
+            c_count = len(countries)
+            continents = reconciled.get("continent_spread", ["North America"])
+            cont_count = len(continents)
+            usa_p = reconciled.get("usa_presence", True)
         
-        geo_logger.info(f"Input: countries_of_operation = {countries} (count: {c_count})")
-        geo_logger.info(f"Input: continent_spread = {continents} (count: {cont_count})")
-        geo_logger.info(f"Input: usa_presence = {usa_p}")
-        geo_logger.info(f"Input: revenue = {revenue}")
-        geo_logger.info("Math Logic: Evaluates country count and continent spread against revenue tier thresholds.")
-        
-        geo_rating = "average"
-        if revenue >= 1000000000:
-            geo_logger.info("Revenue Tier: >= $1B")
-            geo_logger.info(f"Evaluating c_count={c_count}, cont_count={cont_count} against thresholds: c_count<=10 and cont_count==1 => Favourable; c_count<=10 => Partially Favourable; else Average")
-            if c_count <= 10 and cont_count == 1: 
-                geo_rating = "favourable"
-            elif c_count <= 10: 
-                geo_rating = "partially favourable"
+            bucket = ""
+            rule_matched = []
+            range_str = ""
+            if revenue >= 1000000000:
+                rule_matched.append("Revenue >= $1,000,000,000")
+                if c_count <= 10 and cont_count == 1: geo_rating, bucket, range_str = "favourable", "GS-01", "Countries <= 10 AND Continents == 1"
+                elif c_count <= 10: geo_rating, bucket, range_str = "partially favourable", "GS-02", "Countries <= 10 AND Continents > 1"
+                else: geo_rating, bucket, range_str = "average", "GS-03", "Countries > 10"
+            elif revenue >= 250000000:
+                rule_matched.append("Revenue >= $250,000,000")
+                if c_count <= 5 and cont_count == 1: geo_rating, bucket, range_str = "favourable", "GS-04", "Countries <= 5 AND Continents == 1"
+                elif c_count <= 7: geo_rating, bucket, range_str = "partially favourable", "GS-05", "Countries <= 7"
+                else: geo_rating, bucket, range_str = "average", "GS-06", "Countries > 7"
+            elif revenue >= 50000000:
+                rule_matched.append("Revenue >= $50,000,000")
+                if c_count <= 3 and cont_count == 1: geo_rating, bucket, range_str = "favourable", "GS-07", "Countries <= 3 AND Continents == 1"
+                elif c_count <= 5: geo_rating, bucket, range_str = "partially favourable", "GS-08", "Countries <= 5"
+                else: geo_rating, bucket, range_str = "average", "GS-09", "Countries > 5"
             else:
-                geo_rating = "average"
-        elif revenue >= 250000000:
-            geo_logger.info("Revenue Tier: >= $250M")
-            geo_logger.info(f"Evaluating c_count={c_count}, cont_count={cont_count} against thresholds: c_count<=5 and cont_count==1 => Favourable; c_count<=7 => Partially Favourable; else Average")
-            if c_count <= 5 and cont_count == 1: 
-                geo_rating = "favourable"
-            elif c_count <= 7: 
-                geo_rating = "partially favourable"
-            else:
-                geo_rating = "average"
-        elif revenue >= 50000000:
-            geo_logger.info("Revenue Tier: >= $50M")
-            geo_logger.info(f"Evaluating c_count={c_count}, cont_count={cont_count} against thresholds: c_count<=3 and cont_count==1 => Favourable; c_count<=5 => Partially Favourable; else Average")
-            if c_count <= 3 and cont_count == 1: 
-                geo_rating = "favourable"
-            elif c_count <= 5: 
-                geo_rating = "partially favourable"
-            else:
-                geo_rating = "average"
-        else:
-            geo_logger.info("Revenue Tier: < $50M")
-            geo_logger.info(f"Evaluating c_count={c_count}, cont_count={cont_count} against thresholds: c_count<=2 and cont_count==1 => Favourable; c_count<=10 => Partially Favourable; else Average")
-            if c_count <= 2 and cont_count == 1: 
-                geo_rating = "favourable"
-            elif c_count <= 10: 
-                geo_rating = "partially favourable"
-            else:
-                geo_rating = "average"
+                rule_matched.append("Revenue < $50,000,000")
+                if c_count <= 2 and cont_count == 1: geo_rating, bucket, range_str = "favourable", "GS-10", "Countries <= 2 AND Continents == 1"
+                elif c_count <= 10: geo_rating, bucket, range_str = "partially favourable", "GS-11", "Countries <= 10"
+                else: geo_rating, bucket, range_str = "average", "GS-12", "Countries > 10"
                 
-        modifier_scores["Geographic Spread"] = {"score": c_count, "rating": geo_rating}
-        underwriting_rationale["Geographic Spread"] = f"Operates in {c_count} countries. USA presence: {usa_p}."
-        geo_logger.info(f"Resulting Rating: {geo_rating}")
-        geo_logger.info("========================================\n")
+            rule_matched.append(range_str)
+            desc = f"Companies in the {rev_tier_short} tier operating in {range_str.split('AND')[0].strip().replace('Countries', 'countries')} exhibit {geo_rating} geographic complexity."
+            
+            p_factors, r_factors = [], []
+            if "favourable" in geo_rating: p_factors.append(f"Concentrated geographic footprint ({c_count} countries)")
+            if "unfavourable" in geo_rating or geo_rating == "average": r_factors.append(f"Broad geographic footprint ({c_count} countries across {cont_count} continents)")
+            if usa_p: r_factors.append("Operations in the USA subject to stringent state-level privacy regulations (e.g. CCPA, NYDFS)")
 
+            modifier_scores["Geographic Spread"] = {"score": c_count, "rating": geo_rating}
+            underwriting_rationale["Geographic Spread"] = {
+                "decision_summary": f"Geographic risk evaluated across {c_count} countr{'ies' if c_count!=1 else 'y'}.",
+                "rule_id": bucket,
+                "rule_name": f"{rev_tier_short} - Global Spread - {geo_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Revenue Tier": rev_tier,
+                    "Country Count": c_count,
+                    "Continent Count": cont_count,
+                    "USA Presence": "Yes" if usa_p else "No"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": geo_rating.title(),
+                "reason": generate_reason(geo_rating.title(), {"Revenue Tier": rev_tier,
+                    "Country Count": c_count,
+                    "Continent Count": cont_count,
+                    "USA Presence": "Yes" if usa_p else "No"}, bucket, desc),
+                "business_impact": ["Increased multi-jurisdictional compliance requirements", "Higher operational complexity in incident response", "Elevated state-sponsored threat exposure"] if c_count > 5 else ["Streamlined regulatory compliance landscape", "Centralized incident response operations"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            geo_logger.error(f"Exception: {e}")
 
         # --- 5. Internet Footprint ---
         foot_logger = get_agent_logger("Internet footprint")
-        foot_logger.info("========================================")
-        foot_logger.info("Modifier Evaluation: Internet footprint")
-        foot_logger.info("========================================")
-        domain_count = int(reconciled.get("internet_exposure_domains", 1))
-        scale = reconciled.get("customer_base_scale", "SMB (<1k)")
+        try:
+            domain_count = int(reconciled.get("internet_exposure_domains", 1))
+            scale = reconciled.get("customer_base_scale", "SMB (<1k)")
         
-        foot_logger.info(f"Input: internet_exposure_domains = {domain_count}")
-        foot_logger.info(f"Input: customer_base_scale = {scale}")
+            mult = 1.0
+            if "Enterprise" in scale: mult = 3.0
+            elif "Mid-Market" in scale: mult = 2.0
+            footprint_score = domain_count * mult
         
-        mult = 1.0
-        if "Enterprise" in scale: 
-            mult = 3.0
-        elif "Mid-Market" in scale: 
-            mult = 2.0
+            bucket = ""
+            rule_matched = []
+            if footprint_score <= 5: 
+                footprint_rating, bucket = "favourable", "IF-01"
+                rule_matched.append("Calculated Footprint Score <= 5.0")
+                desc = "Very minimal external attack surface relative to company scale."
+            elif footprint_score <= 20: 
+                footprint_rating, bucket = "average", "IF-02"
+                rule_matched.append("Calculated Footprint Score <= 20.0")
+                desc = "Standard external attack surface relative to company scale."
+            elif footprint_score <= 100: 
+                footprint_rating, bucket = "partially unfavourable", "IF-03"
+                rule_matched.append("Calculated Footprint Score <= 100.0")
+                desc = "Expanded external attack surface requiring robust vulnerability management."
+            else: 
+                footprint_rating, bucket = "unfavourable", "IF-04"
+                rule_matched.append("Calculated Footprint Score > 100.0")
+                desc = "Massive external attack surface presenting severe exposure and discovery challenges."
             
-        footprint_score = domain_count * mult
-        foot_logger.info(f"Resolved scale multiplier: {mult}. Computed footprint score (domain_count * multiplier) = {footprint_score}")
-        
-        footprint_rating = "average"
-        foot_logger.info(f"Evaluating footprint_score={footprint_score} against thresholds: <=5 Favourable, <=20 Average, <=100 Partially Unfavourable, >100 Unfavourable")
-        if footprint_score <= 5: 
-            footprint_rating = "favourable"
-        elif footprint_score <= 20: 
-            footprint_rating = "average"
-        elif footprint_score <= 100: 
-            footprint_rating = "partially unfavourable"
-        else: 
-            footprint_rating = "unfavourable"
-            
-        modifier_scores["Internet footprint"] = {"score": footprint_score, "rating": footprint_rating}
-        underwriting_rationale["Internet footprint"] = f"Footprint score: {footprint_score} based on scale multiplier."
-        foot_logger.info(f"Resulting Rating: {footprint_rating}")
-        foot_logger.info("========================================\n")
+            p_factors, r_factors = [], []
+            if "favourable" in footprint_rating: p_factors.append(f"Highly consolidated external perimeter ({domain_count} domains)")
+            if "unfavourable" in footprint_rating: r_factors.append(f"Sprawling external perimeter ({domain_count} domains discovered)")
 
+            modifier_scores["Internet footprint"] = {"score": footprint_score, "rating": footprint_rating}
+            underwriting_rationale["Internet footprint"] = {
+                "decision_summary": f"External attack surface evaluated.",
+                "rule_id": bucket,
+                "rule_name": f"{scale.split(' ')[0]} - {footprint_rating.title()} Internet Footprint Risk",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Discovered Domains": domain_count,
+                    "Customer Base Scale": scale,
+                    "Scale Multiplier": mult,
+                    "Footprint Score": footprint_score
+                },
+                "matched_bucket": bucket,
+                "assigned_category": footprint_rating.title(),
+                "reason": generate_reason(footprint_rating.title(), {"Discovered Domains": domain_count,
+                    "Customer Base Scale": scale,
+                    "Scale Multiplier": mult,
+                    "Footprint Score": footprint_score}, bucket, desc),
+                "business_impact": ["Increased likelihood of undiscovered rogue assets", "Higher vulnerability to automated mass-scanning exploits", "Expanded perimeter monitoring costs"] if "unfavourable" in footprint_rating else ["Tight control over perimeter assets", "Lower likelihood of shadow IT exploitation"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            foot_logger.error(f"Exception: {e}")
 
         # --- 6. Nature of Services ---
         serv_logger = get_agent_logger("Nature of services")
-        serv_logger.info("========================================")
-        serv_logger.info("Modifier Evaluation: Nature of services")
-        serv_logger.info("========================================")
-        evidence = state.get("collected_evidence", {})
-        
-        # Helper to convert to string
-        def _to_str(val):
-            if isinstance(val, list): return ", ".join(str(i) for i in val if i)
-            return str(val) if val else ""
+        try:
+            import numpy as np
+            evidence = state.get("collected_evidence", {})
+            def _to_str(val): return ", ".join(str(i) for i in val if i) if isinstance(val, list) else (str(val) if val else "")
 
-        # 1. Gather all extraction signals
-        domain_findings = evidence.get("DomainScraper", {}).get("findings", {})
-        wikidata_findings = evidence.get("Wikidata", {}).get("findings", {})
-        wikipedia_findings = evidence.get("Wikipedia", {}).get("findings", {})
+            domain_findings = evidence.get("DomainScraper", {}).get("findings", {})
+            wikidata_findings = evidence.get("Wikidata", {}).get("findings", {})
+            wikipedia_findings = evidence.get("Wikipedia", {}).get("findings", {})
 
-        products_str = _to_str(domain_findings.get("products_services_portfolio", []))
-        industry_str = _to_str(wikidata_findings.get("industry", [])) + ", " + \
-                       _to_str(wikidata_findings.get("sub_industries", [])) + ", " + \
-                       _to_str(wikipedia_findings.get("industry_classification", []))
-        sic_str = _to_str(reconciled.get("sic_codes", []))
-        compliance_str = _to_str(domain_findings.get("compliance_mentions", [])) + ", " + _to_str(reconciled.get("customer_type", ""))
+            products_str = _to_str(domain_findings.get("products_services_portfolio", []))
+            industry_str = _to_str(wikidata_findings.get("industry", [])) + ", " + _to_str(wikidata_findings.get("sub_industries", [])) + ", " + _to_str(wikipedia_findings.get("industry_classification", []))
+            sic_str = _to_str(reconciled.get("sic_codes", []))
+            compliance_str = _to_str(domain_findings.get("compliance_mentions", [])) + ", " + _to_str(reconciled.get("customer_type", ""))
 
-        serv_logger.info(f"Gathered text signals:")
-        serv_logger.info(f"- Products/Services Portfolio: '{products_str}'")
-        serv_logger.info(f"- Industry Classifications: '{industry_str}'")
-        serv_logger.info(f"- SIC Codes: '{sic_str}'")
-        serv_logger.info(f"- Compliance & Customer Type: '{compliance_str}'")
+            high_risk_kw = ["healthcare", "hospital", "patient", "clinical", "insurance", "banking", "financial services", "payment", "lending", "fintech"]
+            medium_risk_kw = ["cloud", "saas", "software", "enterprise software", "ai", "cybersecurity", "data platform", "manufacturing", "logistics", "education", "retail"]
+            low_risk_kw = ["low digital exposure", "simple services"]
 
-        # 2. Reference keywords mapping function
-        high_risk_kw = ["healthcare", "hospital", "patient", "clinical", "insurance", "banking", "financial services", "payment", "lending", "fintech"]
-        medium_risk_kw = ["cloud", "saas", "software", "enterprise software", "ai", "cybersecurity", "data platform", "manufacturing", "logistics", "education", "retail"]
-        low_risk_kw = ["low digital exposure", "simple services"]
-
-        def score_text_logged(text: str, category_name: str):
-            t = text.lower()
-            if not t.strip() or t.strip() == ", ,": 
-                serv_logger.info(f"Category '{category_name}' text is empty. Skipping.")
+            def score_text_logged(text: str):
+                t = text.lower()
+                if not t.strip() or t.strip() == ", ,": return None, None
+                for kw in high_risk_kw:
+                    if kw in t: return 3.0, kw
+                for kw in medium_risk_kw:
+                    if kw in t: return 2.0, kw
+                for kw in low_risk_kw:
+                    if kw in t: return 1.0, kw
                 return None, None
-            for kw in high_risk_kw:
-                if kw in t: 
-                    serv_logger.info(f"Category '{category_name}' matched High Risk keyword: '{kw}' (3.0 pts)")
-                    return 3.0, kw
-            for kw in medium_risk_kw:
-                if kw in t: 
-                    serv_logger.info(f"Category '{category_name}' matched Medium Risk keyword: '{kw}' (2.0 pts)")
-                    return 2.0, kw
-            for kw in low_risk_kw:
-                if kw in t: 
-                    serv_logger.info(f"Category '{category_name}' matched Low Risk keyword: '{kw}' (1.0 pts)")
-                    return 1.0, kw
-            serv_logger.info(f"Category '{category_name}' text has no matching risk keywords.")
-            return None, None
 
-        # 3. Evaluate each signal category
-        p_score, p_kw = score_text_logged(products_str, "Products")
-        i_score, i_kw = score_text_logged(industry_str, "Industry")
-        s_score, s_kw = score_text_logged(sic_str, "SIC")
-        c_score, c_kw = score_text_logged(compliance_str, "Compliance/Customer")
+            p_score, p_kw = score_text_logged(products_str)
+            i_score, i_kw = score_text_logged(industry_str)
+            s_score, s_kw = score_text_logged(sic_str)
+            c_score, c_kw = score_text_logged(compliance_str)
 
-        # 4. Compute weighted decision
-        weights = {"p": 0.40, "i": 0.30, "s": 0.20, "c": 0.10}
-        total_score = 0.0
-        total_weight = 0.0
+            weights = {"p": 0.40, "i": 0.30, "s": 0.20, "c": 0.10}
+            total_score = 0.0
+            total_weight = 0.0
 
-        if p_score is not None:
-            total_score += p_score * weights["p"]
-            total_weight += weights["p"]
-            serv_logger.info(f"Weighted Products: score={p_score} * weight={weights['p']} = {p_score * weights['p']:.2f}")
-        if i_score is not None:
-            total_score += i_score * weights["i"]
-            total_weight += weights["i"]
-            serv_logger.info(f"Weighted Industry: score={i_score} * weight={weights['i']} = {i_score * weights['i']:.2f}")
-        if s_score is not None:
-            total_score += s_score * weights["s"]
-            total_weight += weights["s"]
-            serv_logger.info(f"Weighted SIC: score={s_score} * weight={weights['s']} = {s_score * weights['s']:.2f}")
-        if c_score is not None:
-            total_score += c_score * weights["c"]
-            total_weight += weights["c"]
-            serv_logger.info(f"Weighted Compliance: score={c_score} * weight={weights['c']} = {c_score * weights['c']:.2f}")
+            if p_score is not None: total_score += p_score * weights["p"]; total_weight += weights["p"]
+            if i_score is not None: total_score += i_score * weights["i"]; total_weight += weights["i"]
+            if s_score is not None: total_score += s_score * weights["s"]; total_weight += weights["s"]
+            if c_score is not None: total_score += c_score * weights["c"]; total_weight += weights["c"]
 
-        appetite = None
-        if total_weight > 0:
-            final_score = total_score / total_weight
-            serv_logger.info(f"Normalized Weighted Score: {total_score:.4f} / {total_weight:.2f} = {final_score:.4f}")
-            
-            serv_logger.info("Evaluating final_score against thresholds: >=2.5 High Risk, >=1.5 Medium Risk, else Low Risk")
-            if final_score >= 2.5:
-                appetite = "high_risk"
-            elif final_score >= 1.5:
-                appetite = "medium_risk"
+            rule_matched = []
+            appetite = None
+            final_score = 0
+            if total_weight > 0:
+                final_score = total_score / total_weight
+                if final_score >= 2.5: 
+                    appetite = "high_risk"
+                    rule_matched.append("Weighted Semantic Score >= 2.5")
+                elif final_score >= 1.5: 
+                    appetite = "medium_risk"
+                    rule_matched.append("1.5 <= Weighted Semantic Score < 2.5")
+                else: 
+                    appetite = "low_risk"
+                    rule_matched.append("Weighted Semantic Score < 1.5")
             else:
-                appetite = "low_risk"
-            
-            # Generate Explainability Rationale
-            lines = []
-            if p_kw: lines.append(f"Detected products: {p_kw}")
-            if i_kw: lines.append(f"Detected industries: {i_kw}")
-            if s_kw or c_kw:
-                other_kw = [k for k in [s_kw, c_kw] if k]
-                if other_kw: lines.append(f"Other signals: {', '.join(other_kw)}")
-            
-            lines.append(f"Weighted Score: {final_score:.2f}")
-            lines.append(f"Assigned {appetite} according to reference table.")
-            rationale_text = " | ".join(lines)
-        else:
-            appetite = reconciled.get("services_appetite", "medium_risk")
-            rationale_text = f"Nature of Services evaluated from fallback. Mapped to {appetite}."
-            serv_logger.info(f"No text keywords matched. Falling back to default services_appetite: '{appetite}'")
+                appetite = reconciled.get("services_appetite", "medium_risk")
+                rule_matched.append("Fallback to default services appetite")
 
-        if "low_risk" in appetite: 
-            services_rating = "favourable"
-        elif "high_risk" in appetite: 
-            services_rating = "partially unfavourable"
-        else: 
-            services_rating = "average"
+            if "low_risk" in appetite: services_rating, bucket = "favourable", "NS-01"
+            elif "high_risk" in appetite: services_rating, bucket = "partially unfavourable", "NS-03"
+            else: services_rating, bucket = "average", "NS-02"
             
-        modifier_scores["Nature of services"] = {"score": appetite, "rating": services_rating}
-        underwriting_rationale["Nature of services"] = rationale_text
-        serv_logger.info(f"Resulting Rating: {services_rating}")
-        serv_logger.info("========================================\n")
+            p_factors, r_factors = [], []
+            if "low_risk" in appetite: p_factors.append("Low risk industry sector identified via semantic analysis")
+            if "high_risk" in appetite: r_factors.append(f"High risk industry keyword identified: '{p_kw or i_kw or s_kw}'")
 
+            modifier_scores["Nature of services"] = {"score": appetite, "rating": services_rating}
+            underwriting_rationale["Nature of services"] = {
+                "decision_summary": f"Service risk determined to be {appetite.replace('_', ' ')} based on semantic keyword matching.",
+                "rule_id": bucket,
+                "rule_name": f"Nature of Services - {appetite.replace('_', ' ').title()}",
+                "rule_description": f"Companies providing {appetite.replace('_', ' ')} services carry corresponding baseline cyber liability.",
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Matched Products Keyword": p_kw or "None",
+                    "Matched Industry Keyword": i_kw or "None",
+                    "Matched SIC Keyword": s_kw or "None",
+                    "Calculated Risk Score": f"{final_score:.2f} / 3.0" if total_weight > 0 else "Fallback"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": services_rating.title(),
+                "reason": generate_reason(services_rating.title(), {"Matched Products Keyword": p_kw or "None",
+                    "Matched Industry Keyword": i_kw or "None",
+                    "Matched SIC Keyword": s_kw or "None",
+                    "Calculated Risk Score": f"{final_score:.2f} / 3.0" if total_weight > 0 else "Fallback"}, bucket, f"Companies providing {appetite.replace('_', ' ')} services generally face {services_rating} intrinsic cyber exposure."),
+                "business_impact": ["Organizations offering highly sensitive services (like healthcare or financial platforms) inherently carry a higher baseline cyber exposure", "Elevated severity for business interruption impacts"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            serv_logger.error(f"Exception: {e}")
 
         # --- 7. Organizational Complexity ---
         org_logger = get_agent_logger("Organizational Complexity")
-        org_logger.info("========================================")
-        org_logger.info("Modifier Evaluation: Organizational Complexity")
-        org_logger.info("========================================")
-        subs_count = len(reconciled.get("subsidiaries", []))
-        org_logger.info(f"Input: subsidiaries count = {subs_count}")
-        org_logger.info(f"Input: revenue = {revenue}")
-        org_logger.info("Math Logic: Subsidiary count evaluated against revenue tier thresholds.")
-        
-        org_rating = "average"
-        if revenue >= 1000000000:
-            org_logger.info("Revenue Tier: >= $1B")
-            org_logger.info(f"Evaluating subs_count={subs_count} against thresholds: <10 Very Favourable, <=20 Favourable, <=50 Average, >50 Partially Unfavourable")
-            if subs_count < 10: org_rating = "very favourable"
-            elif subs_count <= 20: org_rating = "favourable"
-            elif subs_count <= 50: org_rating = "average"
-            else: org_rating = "partially unfavourable"
-        elif revenue >= 250000000:
-            org_logger.info("Revenue Tier: >= $250M")
-            org_logger.info(f"Evaluating subs_count={subs_count} against thresholds: <7 Very Favourable, <=15 Favourable, <=30 Average, >30 Partially Unfavourable")
-            if subs_count < 7: org_rating = "very favourable"
-            elif subs_count <= 15: org_rating = "favourable"
-            elif subs_count <= 30: org_rating = "average"
-            else: org_rating = "partially unfavourable"
-        elif revenue >= 50000000:
-            org_logger.info("Revenue Tier: >= $50M")
-            org_logger.info(f"Evaluating subs_count={subs_count} against thresholds: <5 Very Favourable, <=10 Favourable, <=15 Average, >15 Partially Unfavourable")
-            if subs_count < 5: org_rating = "very favourable"
-            elif subs_count <= 10: org_rating = "favourable"
-            elif subs_count <= 15: org_rating = "average"
-            else: org_rating = "partially unfavourable"
-        else:
-            org_logger.info("Revenue Tier: < $50M")
-            org_logger.info(f"Evaluating subs_count={subs_count} against thresholds: <3 Very Favourable, <=6 Favourable, <=10 Average, >10 Partially Unfavourable")
-            if subs_count < 3: org_rating = "very favourable"
-            elif subs_count <= 6: org_rating = "favourable"
-            elif subs_count <= 10: org_rating = "average"
-            else: org_rating = "partially unfavourable"
+        try:
+            subs_count = len(reconciled.get("subsidiaries", []))
             
-        modifier_scores["Organizational Complexity"] = {"score": subs_count, "rating": org_rating}
-        underwriting_rationale["Organizational Complexity"] = f"Total subsidiaries: {subs_count} evaluated against revenue tier."
-        org_logger.info(f"Resulting Rating: {org_rating}")
-        org_logger.info("========================================\n")
+            bucket = ""
+            rule_matched = []
+            range_str = ""
+            if revenue >= 1000000000:
+                rule_matched.append("Revenue >= $1,000,000,000")
+                if subs_count < 10: org_rating, bucket, range_str = "very favourable", "OC-01", "Subsidiaries < 10"
+                elif subs_count <= 20: org_rating, bucket, range_str = "favourable", "OC-02", "Subsidiaries <= 20"
+                elif subs_count <= 50: org_rating, bucket, range_str = "average", "OC-03", "Subsidiaries <= 50"
+                else: org_rating, bucket, range_str = "partially unfavourable", "OC-04", "Subsidiaries > 50"
+            elif revenue >= 250000000:
+                rule_matched.append("Revenue >= $250,000,000")
+                if subs_count < 7: org_rating, bucket, range_str = "very favourable", "OC-05", "Subsidiaries < 7"
+                elif subs_count <= 15: org_rating, bucket, range_str = "favourable", "OC-06", "Subsidiaries <= 15"
+                elif subs_count <= 30: org_rating, bucket, range_str = "average", "OC-07", "Subsidiaries <= 30"
+                else: org_rating, bucket, range_str = "partially unfavourable", "OC-08", "Subsidiaries > 30"
+            elif revenue >= 50000000:
+                rule_matched.append("Revenue >= $50,000,000")
+                if subs_count < 5: org_rating, bucket, range_str = "very favourable", "OC-09", "Subsidiaries < 5"
+                elif subs_count <= 10: org_rating, bucket, range_str = "favourable", "OC-10", "Subsidiaries <= 10"
+                elif subs_count <= 15: org_rating, bucket, range_str = "average", "OC-11", "Subsidiaries <= 15"
+                else: org_rating, bucket, range_str = "partially unfavourable", "OC-12", "Subsidiaries > 15"
+            else:
+                rule_matched.append("Revenue < $50,000,000")
+                if subs_count < 3: org_rating, bucket, range_str = "very favourable", "OC-13", "Subsidiaries < 3"
+                elif subs_count <= 6: org_rating, bucket, range_str = "favourable", "OC-14", "Subsidiaries <= 6"
+                elif subs_count <= 10: org_rating, bucket, range_str = "average", "OC-15", "Subsidiaries <= 10"
+                else: org_rating, bucket, range_str = "partially unfavourable", "OC-16", "Subsidiaries > 10"
+            
+            rule_matched.append(range_str)
+            p_factors, r_factors = [], []
+            if "favourable" in org_rating: p_factors.append(f"Highly consolidated corporate structure ({subs_count} subsidiaries)")
+            if "unfavourable" in org_rating: r_factors.append(f"Complex corporate structure ({subs_count} subsidiaries)")
 
+            modifier_scores["Organizational Complexity"] = {"score": subs_count, "rating": org_rating}
+            underwriting_rationale["Organizational Complexity"] = {
+                "decision_summary": f"Structural risk evaluated against {subs_count} known subsidiaries.",
+                "rule_id": bucket,
+                "rule_name": f"{rev_tier_short} - {org_rating.title()} Organizational Complexity",
+                "rule_description": f"Companies in the {rev_tier_short} tier with {range_str.lower().replace('subsidiaries', 'known subsidiaries')} are considered {org_rating.title()} complexity.",
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Revenue Tier": rev_tier,
+                    "Subsidiaries Count": subs_count
+                },
+                "matched_bucket": bucket,
+                "assigned_category": org_rating.title(),
+                "reason": generate_reason(org_rating.title(), {"Revenue Tier": rev_tier,
+                    "Subsidiaries Count": subs_count}, bucket, f"Companies in the {rev_tier_short} tier with {range_str.lower()} are classified as {org_rating.title()} due to organizational complexity."),
+                "business_impact": ["A higher number of corporate entities correlates with decentralized IT environments", "Increased structural complexity elevates cyber risk and visibility challenges"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            org_logger.error(f"Exception: {e}")
 
         # --- 8. Privacy Regulation ---
         priv_logger = get_agent_logger("Privacy Regulation")
-        priv_logger.info("========================================")
-        priv_logger.info("Modifier Evaluation: Privacy Regulation")
-        priv_logger.info("========================================")
-        has_policy = reconciled.get("privacy_policy_published", False)
-        mentions = reconciled.get("compliance_mentions", [])
-        m_count = len(mentions)
+        try:
+            has_policy = reconciled.get("privacy_policy_published", False)
+            mentions = reconciled.get("compliance_mentions", [])
+            m_count = len(mentions)
         
-        priv_logger.info(f"Input: privacy_policy_published = {has_policy}")
-        priv_logger.info(f"Input: compliance_mentions = {mentions} (count: {m_count})")
-        priv_logger.info("Math Logic: Policy published and compliance count >= 2 => favourable; count == 1 => partially favourable; no policy => partially unfavourable.")
-        
-        priv_rating = "average"
-        if has_policy:
-            priv_logger.info("Privacy policy is published. Checking compliance mentions count:")
-            if m_count >= 2: 
-                priv_logger.info("Compliance count >= 2: rating set to 'favourable'")
-                priv_rating = "favourable"
-            elif m_count == 1: 
-                priv_logger.info("Compliance count == 1: rating set to 'partially favourable'")
-                priv_rating = "partially favourable"
+            rule_matched = []
+            if has_policy:
+                rule_matched.append("Privacy Policy Published == True")
+                if m_count >= 2: 
+                    priv_rating, bucket = "favourable", "PR-01"
+                    rule_matched.append("Compliance Frameworks >= 2")
+                    desc = "Clear public privacy policy coupled with multiple compliance framework mentions denotes strong data governance."
+                elif m_count == 1: 
+                    priv_rating, bucket = "partially favourable", "PR-02"
+                    rule_matched.append("Compliance Frameworks == 1")
+                    desc = "Public privacy policy and baseline compliance framework adherence."
+                else:
+                    priv_rating, bucket = "average", "PR-03"
+                    rule_matched.append("Compliance Frameworks == 0")
+                    desc = "Public privacy policy exists, but no specific compliance frameworks explicitly mapped."
             else:
-                priv_logger.info("Compliance count == 0: rating set to 'average'")
-                priv_rating = "average"
-        else:
-            priv_logger.info("Privacy policy is NOT published: rating set to 'partially unfavourable'")
-            priv_rating = "partially unfavourable"
+                rule_matched.append("Privacy Policy Published == False")
+                priv_rating, bucket = "partially unfavourable", "PR-04"
+                desc = "Failure to discover a public privacy policy indicates potential regulatory negligence or opacity."
             
-        modifier_scores["Privacy Regulation"] = {"score": m_count, "rating": priv_rating}
-        underwriting_rationale["Privacy Regulation"] = f"Privacy Policy published: {has_policy}, compliance count: {m_count}."
-        priv_logger.info(f"Resulting Rating: {priv_rating}")
-        priv_logger.info("========================================\n")
-
+            p_factors, r_factors = [], []
+            if has_policy: p_factors.append("Public privacy policy is available")
+            else: r_factors.append("No public privacy policy discovered")
+            if m_count > 0: p_factors.append(f"Adheres to {m_count} compliance frameworks ({', '.join(mentions)})")
+            
+            modifier_scores["Privacy Regulation"] = {"score": m_count, "rating": priv_rating}
+            underwriting_rationale["Privacy Regulation"] = {
+                "decision_summary": f"Privacy maturity evaluated based on policy availability and framework adherence.",
+                "rule_id": bucket,
+                "rule_name": f"Privacy Regulation - {priv_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Privacy Policy Found": "Yes" if has_policy else "No",
+                    "Compliance Frameworks": m_count,
+                    "Detected Frameworks": ", ".join(mentions) if mentions else "None"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": priv_rating.title(),
+                "reason": generate_reason(priv_rating.title(), {"Privacy Policy Found": "Yes" if has_policy else "No",
+                    "Compliance Frameworks": m_count,
+                    "Detected Frameworks": ", ".join(mentions) if mentions else "None"}, bucket, desc),
+                "business_impact": ["Strong adherence to standardized privacy regulations generally demonstrates mature data governance", "Reduces liability in the event of regulatory audits"] if "favourable" in priv_rating else ["Increased likelihood of regulatory fines", "Poor data governance posture"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            priv_logger.error(f"Exception: {e}")
 
         # --- 9. Seasonality of Sales ---
         seas_logger = get_agent_logger("Seasonality of sales")
-        seas_logger.info("========================================")
-        seas_logger.info("Modifier Evaluation: Seasonality of sales")
-        seas_logger.info("========================================")
-        q_rev = reconciled.get("quarterly_revenue", [])
-        sic_codes = reconciled.get("sic_codes", ["7372"])
-        sic = sic_codes[0] if sic_codes else "7372"
-        cv = None
-        season_rating = "average"
-        
-        seas_logger.info(f"Input: quarterly_revenue = {q_rev}")
-        seas_logger.info(f"Input: sic_codes = {sic_codes}")
-        seas_logger.info("Math Logic: If quarterly revenue count >= 4, CV = std/mean. CV < 0.1 => favourable, CV <= 0.25 => average, else partially unfavourable. Else fallback to SIC-based rule.")
-        
-        if len(q_rev) >= 4:
-            mean = np.mean(q_rev)
-            std = np.std(q_rev)
-            seas_logger.info(f"Quarterly revenue data available. Calculated mean = {mean:.2f}, standard deviation = {std:.2f}")
-            if mean > 0:
-                cv = std / mean
-                seas_logger.info(f"Computed Coefficient of Variation (CV) = {cv:.4f}")
-                seas_logger.info(f"Evaluating CV against thresholds: <0.1 Favourable, <=0.25 Average, else Partially Unfavourable")
-                if cv < 0.1: 
-                    season_rating = "favourable"
-                elif cv <= 0.25: 
-                    season_rating = "average"
+        try:
+            q_rev = reconciled.get("quarterly_revenue", [])
+            sic_codes = reconciled.get("sic_codes", ["7372"])
+            sic = sic_codes[0] if sic_codes else "7372"
+            cv = None
+            
+            rule_matched = []
+            if len(q_rev) >= 4:
+                rule_matched.append(f"Quarterly Revenue Data Points >= 4")
+                mean = np.mean(q_rev)
+                std = np.std(q_rev)
+                if mean > 0:
+                    cv = std / mean
+                    if cv < 0.1: 
+                        season_rating, bucket = "favourable", "SS-01"
+                        rule_matched.append("Coefficient of Variation (CV) < 0.1")
+                        desc = "Extremely stable quarterly revenue with negligible seasonality."
+                    elif cv <= 0.25: 
+                        season_rating, bucket = "average", "SS-02"
+                        rule_matched.append("0.1 <= Coefficient of Variation (CV) <= 0.25")
+                        desc = "Standard revenue volatility within normal operational bounds."
+                    else: 
+                        season_rating, bucket = "partially unfavourable", "SS-03"
+                        rule_matched.append("Coefficient of Variation (CV) > 0.25")
+                        desc = "High revenue volatility indicating significant seasonal peaks."
+                else:
+                    season_rating, bucket = "average", "SS-04"
+                    rule_matched.append("Mean Revenue == 0 (Fallback)")
+                    desc = "Zero mean revenue detected, falling back to average assumption."
+            else:
+                rule_matched.append(f"Quarterly Revenue Data Points < 4")
+                if sic == "5311": 
+                    season_rating, bucket = "partially unfavourable", "SS-05"
+                    rule_matched.append("Primary SIC == 5311 (Retail Fallback)")
+                    desc = "Missing quarterly data, but industry SIC indicates retail, which is inherently seasonal."
                 else: 
-                    season_rating = "partially unfavourable"
-                underwriting_rationale["Seasonality of sales"] = f"Sales CV: {cv:.3f} calculated from quarterly revenues."
-            else:
-                seas_logger.info("Mean is zero or negative. Fallback to average seasonality.")
-                underwriting_rationale["Seasonality of sales"] = "Zero mean quarterly revenue, fallback to average seasonality."
-        else:
-            seas_logger.info(f"Quarterly revenue data count is {len(q_rev)} (fewer than 4). Using SIC fallback code: '{sic}'")
-            if sic == "5311":
-                seas_logger.info("SIC is 5311 (Department Stores): high seasonality expected, rating set to 'partially unfavourable'")
-                season_rating = "partially unfavourable"
-                underwriting_rationale["Seasonality of sales"] = "Fallback to Retail SIC: high seasonality expected."
-            else:
-                seas_logger.info(f"SIC '{sic}' is not 5311: average seasonality expected, rating set to 'average'")
-                season_rating = "average"
-                underwriting_rationale["Seasonality of sales"] = "Fallback to services SIC: average seasonality expected."
+                    season_rating, bucket = "average", "SS-06"
+                    rule_matched.append(f"Primary SIC != 5311 (Standard Fallback)")
+                    desc = "Missing quarterly data; standard industry defaults applied."
                 
-        modifier_scores["Seasonality of sales"] = {"score": cv if cv is not None else 0.0, "rating": season_rating}
-        seas_logger.info(f"Resulting Rating: {season_rating}")
-        seas_logger.info("========================================\n")
+            p_factors, r_factors = [], []
+            if cv is not None and cv < 0.1: p_factors.append("Highly consistent, non-seasonal revenue streams")
+            if cv is not None and cv > 0.25: r_factors.append("Significant revenue seasonality detected")
 
+            modifier_scores["Seasonality of sales"] = {"score": cv if cv is not None else 0.0, "rating": season_rating}
+            underwriting_rationale["Seasonality of sales"] = {
+                "decision_summary": f"Revenue volatility evaluated using Coefficient of Variation or Industry heuristics.",
+                "rule_id": bucket,
+                "rule_name": f"Seasonality of Sales - {season_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Data Points": len(q_rev),
+                    "Primary SIC": sic,
+                    "Coefficient of Variation (CV)": f"{cv:.3f}" if cv is not None else "N/A"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": season_rating.title(),
+                "reason": generate_reason(season_rating.title(), {"Data Points": len(q_rev),
+                    "Primary SIC": sic,
+                    "Coefficient of Variation (CV)": f"{cv:.3f}" if cv is not None else "N/A"}, bucket, desc),
+                "business_impact": ["High seasonality implies that operational outages during peak periods would have a disproportionately severe financial impact"] if "unfavourable" in season_rating else ["Stable revenue means business interruption losses are predictable and linear"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            seas_logger.error(f"Exception: {e}")
 
         # --- 10. Volatility/Recovery in Sales ---
         vol_logger = get_agent_logger("Volatility/Recovery in Sales")
-        vol_logger.info("========================================")
-        vol_logger.info("Modifier Evaluation: Volatility/Recovery in Sales")
-        vol_logger.info("========================================")
-        de = reconciled.get("digital_exposure", 3)
-        ds = reconciled.get("disruption_speed", 3)
-        rc = reconciled.get("recovery_complexity", 3)
+        try:
+            de = reconciled.get("digital_exposure", 3)
+            ds = reconciled.get("disruption_speed", 3)
+            rc = reconciled.get("recovery_complexity", 3)
+            vol_avg = (de + ds + rc) / 3.0
         
-        vol_logger.info(f"Input: digital_exposure = {de}")
-        vol_logger.info(f"Input: disruption_speed = {ds}")
-        vol_logger.info(f"Input: recovery_complexity = {rc}")
-        
-        vol_avg = (de + ds + rc) / 3.0
-        vol_logger.info(f"Computed average index (exposure + speed + complexity) / 3 = {vol_avg:.4f}")
-        
-        vol_rating = "average"
-        vol_logger.info(f"Evaluating vol_avg={vol_avg:.4f} against thresholds: <=2.0 Favourable, <=3.5 Average, else Partially Unfavourable")
-        if vol_avg <= 2.0: 
-            vol_rating = "favourable"
-        elif vol_avg <= 3.5: 
-            vol_rating = "average"
-        else: 
-            vol_rating = "partially unfavourable"
+            rule_matched = []
+            if vol_avg <= 2.0: 
+                vol_rating, bucket = "favourable", "VR-01"
+                rule_matched.append("Index Average <= 2.0")
+                desc = "Low reliance on critical digital infrastructure and highly agile recovery capabilities."
+            elif vol_avg <= 3.5: 
+                vol_rating, bucket = "average", "VR-02"
+                rule_matched.append("2.0 < Index Average <= 3.5")
+                desc = "Standard digital reliance and recovery timelines."
+            else: 
+                vol_rating, bucket = "partially unfavourable", "VR-03"
+                rule_matched.append("Index Average > 3.5")
+                desc = "High digital exposure with complex, extended recovery workflows."
             
-        modifier_scores["Volatility/Recovery in Sales"] = {"score": vol_avg, "rating": vol_rating}
-        underwriting_rationale["Volatility/Recovery in Sales"] = f"Averaged risk index: {vol_avg:.2f}."
-        vol_logger.info(f"Resulting Rating: {vol_rating}")
-        vol_logger.info("========================================\n")
+            p_factors, r_factors = [], []
+            if vol_avg <= 2.0: p_factors.append("Strong organizational resilience and fast recovery potential")
+            if vol_avg > 3.5: r_factors.append("Fragile digital supply chain and slow recovery potential")
 
+            modifier_scores["Volatility/Recovery in Sales"] = {"score": vol_avg, "rating": vol_rating}
+            underwriting_rationale["Volatility/Recovery in Sales"] = {
+                "decision_summary": f"Recovery complexity index computed as {vol_avg:.2f}.",
+                "rule_id": bucket,
+                "rule_name": f"Volatility & Recovery - {vol_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Digital Exposure (1-5)": de,
+                    "Disruption Speed (1-5)": ds,
+                    "Recovery Complexity (1-5)": rc,
+                    "Index Average": round(vol_avg, 2)
+                },
+                "matched_bucket": bucket,
+                "assigned_category": vol_rating.title(),
+                "reason": generate_reason(vol_rating.title(), {"Digital Exposure (1-5)": de,
+                    "Disruption Speed (1-5)": ds,
+                    "Recovery Complexity (1-5)": rc,
+                    "Index Average": round(vol_avg, 2)}, bucket, desc),
+                "business_impact": ["Higher volatility indicates greater difficulty and extended timelines for business recovery following a cyber event", "Increased business interruption limits required"] if "unfavourable" in vol_rating else ["Streamlined recovery processes limit prolonged business interruption costs"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            vol_logger.error(f"Exception: {e}")
 
         # --- 11. Applicability of Privacy Regulation ---
         appl_logger = get_agent_logger("Applicability of Privacy Regulation")
-        appl_logger.info("========================================")
-        appl_logger.info("Modifier Evaluation: Applicability of Privacy Regulation")
-        appl_logger.info("========================================")
-        sic_codes = reconciled.get("sic_codes", ["7372"])
-        sic = str(sic_codes[0]) if sic_codes else "7372"
-        cust_type = str(reconciled.get("customer_type", "B2B")).upper()
-        has_ecom = reconciled.get("has_ecommerce", False)
+        try:
+            sic_codes = reconciled.get("sic_codes") or []
+            sic = str(sic_codes[0]) if sic_codes else ""
+            cust_type = str(reconciled.get("customer_type", "B2B")).upper()
+            has_ecom = bool(reconciled.get("has_ecommerce", False))
 
-        appl_logger.info(f"Input: sic_codes = {sic_codes} (using primary SIC: '{sic}')")
-        appl_logger.info(f"Input: customer_type = {cust_type}")
-        appl_logger.info(f"Input: has_ecommerce = {has_ecom}")
+            is_high_risk_industry = sic.startswith(("737", "80", "6"))
+            is_strict = (is_high_risk_industry or cust_type in ["B2C", "MIX"] or has_ecom)
 
-        # High privacy applicability industries: IT=737x, Healthcare=80xx, Finance=6xxx
-        is_high_risk_industry = sic.startswith("737") or sic.startswith("80") or sic.startswith("6")
-        appl_logger.info(f"Checking high risk industry status (SIC prefix 737, 80, or 6): {is_high_risk_industry}")
+            rule_matched = []
+            if not is_high_risk_industry and "B2B" in cust_type and "B2C" not in cust_type and not has_ecom:
+                appl_rating, bucket = "favourable", "AP-01"
+                rule_matched.append("High Risk Industry == False")
+                rule_matched.append("Customer Type == 'B2B'")
+                rule_matched.append("Ecommerce == False")
+                desc = "B2B companies in standard industries without ecommerce face the lowest regulatory burden."
+            elif not is_high_risk_industry and "B2B" in cust_type and "B2C" not in cust_type:
+                appl_rating, bucket = "partially favourable", "AP-02"
+                rule_matched.append("High Risk Industry == False")
+                rule_matched.append("Customer Type == 'B2B'")
+                rule_matched.append("Ecommerce == True")
+                desc = "B2B companies in standard industries with ecommerce face moderate regulatory oversight (mostly PCI)."
+            else:
+                appl_rating, bucket = "average", "AP-03"
+                rule_matched.append("High Risk Industry == True OR Customer Type IN ('B2C', 'MIX')")
+                desc = "Companies in high-risk sectors (Finance, Health) or heavily consumer-facing face stringent privacy regulations."
 
-        appl_logger.info("Math Logic: Checks if industry is not high risk and customer type is B2B-only and has no ecommerce => favourable; B2B-only with ecommerce => partially favourable; else average.")
-        if not is_high_risk_industry and "B2B" in cust_type and "B2C" not in cust_type and not has_ecom:
-            appl_logger.info("Industry not high risk, B2B-only, no e-commerce: rating set to 'favourable'")
-            appl_rating = "favourable"
-        elif not is_high_risk_industry and "B2B" in cust_type and "B2C" not in cust_type:
-            appl_logger.info("Industry not high risk, B2B-only, has e-commerce: rating set to 'partially favourable'")
-            appl_rating = "partially favourable"
-        else:
-            appl_logger.info("High risk industry, consumer/mixed customer type, or other configuration: rating set to 'average'")
-            appl_rating = "average"
+            p_factors, r_factors = [], []
+            if is_high_risk_industry: r_factors.append(f"Operating in highly regulated sector (SIC: {sic})")
+            if not is_high_risk_industry and "B2B" in cust_type: p_factors.append("Low overall regulatory footprint")
 
-        modifier_scores["Applicability of Privacy Regulation"] = {"score": 0.0, "rating": appl_rating}
-        underwriting_rationale["Applicability of Privacy Regulation"] = (
-            f"Industry SIC {sic}, customer type {cust_type}, and ecommerce={has_ecom} evaluated for privacy regulation applicability."
-        )
-        appl_logger.info(f"Resulting Rating: {appl_rating}")
-        appl_logger.info("========================================\n")
-
+            modifier_scores["Applicability of Privacy Regulation"] = {"score": 0.0, "rating": appl_rating}
+            underwriting_rationale["Applicability of Privacy Regulation"] = {
+                "decision_summary": f"Privacy regulation applicability assessed based on primary industry and audience.",
+                "rule_id": bucket,
+                "rule_name": f"Privacy Applicability - {appl_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Primary SIC": sic,
+                    "High Risk Industry": "Yes" if is_high_risk_industry else "No",
+                    "Customer Type": cust_type,
+                    "Has Ecommerce": "Yes" if has_ecom else "No"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": appl_rating.title(),
+                "reason": generate_reason(appl_rating.title(), {"Primary SIC": sic,
+                    "High Risk Industry": "Yes" if is_high_risk_industry else "No",
+                    "Customer Type": cust_type,
+                    "Has Ecommerce": "Yes" if has_ecom else "No"}, bucket, desc),
+                "business_impact": ["The company's primary industry sector involves strict privacy regulations (e.g., healthcare/financial data)", "Significantly increased regulatory liability and potential fines in the event of a breach"] if is_strict else ["Standard regulatory requirements apply", "Lower risk of multi-million dollar regulatory fines"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            appl_logger.error(f"Exception: {e}")
 
         # --- 12. B2C End Products ---
         b2c_logger = get_agent_logger("B2C End Products")
-        b2c_logger.info("========================================")
-        b2c_logger.info("Modifier Evaluation: B2C End Products")
-        b2c_logger.info("========================================")
-        b2c_logger.info(f"Input: customer_type = {cust_type}")
-        b2c_logger.info("Math Logic: B2C/B2B mix or MIX => partially favourable; pure B2C or CONSUMER or SMB => favourable; else average.")
-        
-        if ("B2C" in cust_type and "B2B" in cust_type) or "MIX" in cust_type:
-            b2c_logger.info("Customer type contains mixed B2B and B2C / MIX: rating set to 'partially favourable'")
-            b2c_rating = "partially favourable"
-        elif "B2C" in cust_type or "CONSUMER" in cust_type or "SMB" in cust_type:
-            b2c_logger.info("Customer type is B2C / Consumer / SMB: rating set to 'favourable'")
-            b2c_rating = "favourable"
-        else:
-            b2c_logger.info("Customer type is pure B2B / other: rating set to 'average'")
-            b2c_rating = "average"
+        try:
+            rule_matched = []
+            if ("B2C" in cust_type and "B2B" in cust_type) or "MIX" in cust_type:
+                b2c_rating, bucket = "partially favourable", "B2C-01"
+                rule_matched.append("Customer Type == 'MIX'")
+                desc = "Mixed B2B and B2C operations."
+            elif "B2C" in cust_type or "CONSUMER" in cust_type or "SMB" in cust_type:
+                b2c_rating, bucket = "favourable", "B2C-02"
+                rule_matched.append("Customer Type == 'B2C' OR 'SMB'")
+                desc = "Pure B2C/SMB focused operations."
+            else:
+                b2c_rating, bucket = "average", "B2C-03"
+                rule_matched.append("Customer Type == 'B2B' (Default)")
+                desc = "B2B focused operations."
             
-        modifier_scores["B2C End Products"] = {"score": 0.0, "rating": b2c_rating}
-        underwriting_rationale["B2C End Products"] = f"Target customer category is {cust_type}."
-        b2c_logger.info(f"Resulting Rating: {b2c_rating}")
-        b2c_logger.info("========================================\n")
-
+            modifier_scores["B2C End Products"] = {"score": 0.0, "rating": b2c_rating}
+            underwriting_rationale["B2C End Products"] = {
+                "decision_summary": f"Consumer exposure evaluated based on customer type.",
+                "rule_id": bucket,
+                "rule_name": f"B2C End Products - {b2c_rating.title()}",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Customer Type": cust_type
+                },
+                "matched_bucket": bucket,
+                "assigned_category": b2c_rating.title(),
+                "reason": generate_reason(b2c_rating.title(), {"Customer Type": cust_type}, bucket, desc),
+                "business_impact": ["Direct-to-consumer businesses generally collect and retain more granular personally identifiable information (PII)"],
+                "positive_factors": [],
+                "risk_factors": []
+            }
+        except Exception as e:
+            b2c_logger.error(f"Exception: {e}")
 
         # --- 13. Years in business ---
         yib_logger = get_agent_logger("Years in business")
-        yib_logger.info("========================================")
-        yib_logger.info("Modifier Evaluation: Years in business")
-        yib_logger.info("========================================")
-        founding_year = reconciled.get("founding_year")
-        current_year = datetime.now().year
-        yib = None
-        yib_rating = "average"
-        
-        yib_logger.info(f"Input: founding_year = {founding_year}")
-        yib_logger.info(f"Input: current_year = {current_year}")
-        yib_logger.info(f"Input: revenue = {revenue}")
-        yib_logger.info("Math Logic: Years since founding year evaluated against revenue tier thresholds.")
-        
-        if founding_year is not None:
-            try:
-                yib = int(current_year) - int(founding_year)
-                yib_logger.info(f"Calculated Years in Business: {current_year} - {founding_year} = {yib}")
-            except Exception as e:
-                yib_logger.warning(f"Could not convert founding year '{founding_year}' to integer: {e}")
-                pass
+        try:
+            founding_year = reconciled.get("founding_year")
+            current_year = datetime.now().year
+            yib = None
+            
+            if founding_year is not None:
+                try: yib = int(current_year) - int(founding_year)
+                except: pass
 
-        if yib is not None and yib >= 0:
-            if revenue >= 1000000000:
-                yib_logger.info("Revenue Tier: >= $1B")
-                yib_logger.info(f"Evaluating yib={yib} against thresholds: >30 Very Favourable, >=20 Favourable, >=10 Partially Favourable, >=5 Average, else Unfavourable")
-                if yib > 30: yib_rating = "very favourable"
-                elif yib >= 20: yib_rating = "favourable"
-                elif yib >= 10: yib_rating = "partially favourable"
-                elif yib >= 5: yib_rating = "average"
-                else: yib_rating = "unfavourable"
-            elif revenue >= 250000000:
-                yib_logger.info("Revenue Tier: >= $250M")
-                yib_logger.info(f"Evaluating yib={yib} against thresholds: >20 Very Favourable, >=10 Favourable, >=5 Partially Favourable, >=3 Average, else Unfavourable")
-                if yib > 20: yib_rating = "very favourable"
-                elif yib >= 10: yib_rating = "favourable"
-                elif yib >= 5: yib_rating = "partially favourable"
-                elif yib >= 3: yib_rating = "average"
-                else: yib_rating = "unfavourable"
-            elif revenue >= 50000000:
-                yib_logger.info("Revenue Tier: >= $50M")
-                yib_logger.info(f"Evaluating yib={yib} against thresholds: >10 Very Favourable, >=7 Favourable, >=4 Partially Favourable, >=2 Average, else Unfavourable")
-                if yib > 10: yib_rating = "very favourable"
-                elif yib >= 7: yib_rating = "favourable"
-                elif yib >= 4: yib_rating = "partially favourable"
-                elif yib >= 2: yib_rating = "average"
-                else: yib_rating = "unfavourable"
+            bucket = ""
+            rule_matched = []
+            range_str = ""
+            if yib is not None and yib >= 0:
+                if revenue >= 1000000000:
+                    rule_matched.append("Revenue >= $1,000,000,000")
+                    if yib > 30: yib_rating, bucket, range_str = "very favourable", "YB-01", "> 30 years"
+                    elif yib >= 20: yib_rating, bucket, range_str = "favourable", "YB-02", "20 - 30 years"
+                    elif yib >= 10: yib_rating, bucket, range_str = "partially favourable", "YB-03", "10 - 19 years"
+                    elif yib >= 5: yib_rating, bucket, range_str = "average", "YB-04", "5 - 9 years"
+                    else: yib_rating, bucket, range_str = "unfavourable", "YB-05", "< 5 years"
+                elif revenue >= 250000000:
+                    rule_matched.append("Revenue >= $250,000,000")
+                    if yib > 20: yib_rating, bucket, range_str = "very favourable", "YB-06", "> 20 years"
+                    elif yib >= 10: yib_rating, bucket, range_str = "favourable", "YB-07", "10 - 20 years"
+                    elif yib >= 5: yib_rating, bucket, range_str = "partially favourable", "YB-08", "5 - 9 years"
+                    elif yib >= 3: yib_rating, bucket, range_str = "average", "YB-09", "3 - 4 years"
+                    else: yib_rating, bucket, range_str = "unfavourable", "YB-10", "< 3 years"
+                elif revenue >= 50000000:
+                    rule_matched.append("Revenue >= $50,000,000")
+                    if yib > 10: yib_rating, bucket, range_str = "very favourable", "YB-11", "> 10 years"
+                    elif yib >= 7: yib_rating, bucket, range_str = "favourable", "YB-12", "7 - 10 years"
+                    elif yib >= 4: yib_rating, bucket, range_str = "partially favourable", "YB-13", "4 - 6 years"
+                    elif yib >= 2: yib_rating, bucket, range_str = "average", "YB-14", "2 - 3 years"
+                    else: yib_rating, bucket, range_str = "unfavourable", "YB-15", "< 2 years"
+                else:
+                    rule_matched.append("Revenue < $50,000,000")
+                    if yib > 7: yib_rating, bucket, range_str = "very favourable", "YB-16", "> 7 years"
+                    elif yib >= 5: yib_rating, bucket, range_str = "favourable", "YB-17", "5 - 7 years"
+                    elif yib >= 3: yib_rating, bucket, range_str = "partially favourable", "YB-18", "3 - 4 years"
+                    elif yib >= 1: yib_rating, bucket, range_str = "average", "YB-19", "1 - 2 years"
+                    else: yib_rating, bucket, range_str = "unfavourable", "YB-20", "< 1 year"
+                rule_matched.append(f"Operating History {range_str}")
             else:
-                yib_logger.info("Revenue Tier: < $50M")
-                yib_logger.info(f"Evaluating yib={yib} against thresholds: >7 Very Favourable, >=5 Favourable, >=3 Partially Favourable, >=1 Average, else Unfavourable")
-                if yib > 7: yib_rating = "very favourable"
-                elif yib >= 5: yib_rating = "favourable"
-                elif yib >= 3: yib_rating = "partially favourable"
-                elif yib >= 1: yib_rating = "average"
-                else: yib_rating = "unfavourable"
-        else:
-            yib_logger.info("Founding year missing or invalid. Rating set to 'average'")
-            yib_rating = "average"
+                yib_rating, bucket = "average", "YB-21"
+                rule_matched.append("Founding Year == Unknown")
+                range_str = "N/A"
 
-        modifier_scores["Years in business"] = {"score": yib if yib is not None else 0.0, "rating": yib_rating}
-        underwriting_rationale["Years in business"] = f"Founding year: {founding_year}. Years in business: {yib if yib is not None else 'Unknown'}."
-        yib_logger.info(f"Resulting Rating: {yib_rating}")
-        yib_logger.info("========================================\n")
+            desc = f"Companies in the {rev_tier_short} tier operating for {range_str.replace('years', 'years')} are considered {yib_rating.title()} maturity."
+
+            p_factors, r_factors = [], []
+            if yib is not None and "favourable" in yib_rating: p_factors.append(f"Established operational history ({yib} years)")
+            if yib is not None and "unfavourable" in yib_rating: r_factors.append(f"Immature operational history ({yib} years)")
+
+            modifier_scores["Years in business"] = {"score": yib if yib is not None else 0.0, "rating": yib_rating}
+            underwriting_rationale["Years in business"] = {
+                "decision_summary": f"Maturity evaluated based on operational history of {yib if yib is not None else 'unknown'} years.",
+                "rule_id": bucket,
+                "rule_name": f"{rev_tier_short} - {yib_rating.title()} Maturity",
+                "rule_description": desc,
+                "rule_conditions": rule_matched,
+                "input_values": {
+                    "Revenue Tier": rev_tier,
+                    "Founding Year": founding_year or "Unknown",
+                    "Calculated Age": yib if yib is not None else "Unknown"
+                },
+                "matched_bucket": bucket,
+                "assigned_category": yib_rating.title(),
+                "reason": generate_reason(yib_rating.title(), {"Revenue Tier": rev_tier,
+                    "Founding Year": founding_year or "Unknown",
+                    "Calculated Age": yib if yib is not None else "Unknown"}, bucket, desc),
+                "business_impact": ["Established organizations typically exhibit more mature cybersecurity practices", "Higher resilience and institutional knowledge compared to newer ventures"] if "favourable" in yib_rating else ["Newer ventures may lack formalized cybersecurity practices and governance frameworks"],
+                "positive_factors": p_factors,
+                "risk_factors": r_factors
+            }
+        except Exception as e:
+            yib_logger.error(f"Exception: {e}")
 
         # Aggregate overall rating
+        underwriter_logger.info("START Modifier Aggregation")
         numeric_scores = []
         for name, details in modifier_scores.items():
             rat = details["rating"].lower()
             score_val = RATING_SCORES.get(rat, 4.0)
             numeric_scores.append(score_val)
-            # Use LLM rationale if available, otherwise fallback to mathematical rationale
-            if name in assessment.get("underwriting_rationale", {}) and name != "Nature of services":
-                raw_rat = assessment["underwriting_rationale"][name]
-                # Strip trailing incorrect rating words from LLM response
-                cleaned = re.sub(r'(?i)[,\s]*(very favourable|partially favourable|favourable|average|neutral|partially unfavourable|unfavourable)(?:\s*risk)?\.?$', '', raw_rat)
-                underwriting_rationale[name] = f"{cleaned}, {rat}."
 
         avg_score = sum(numeric_scores) / len(numeric_scores) if numeric_scores else 4.0
         if avg_score < 2.0: risk_category = "Very Favourable"
@@ -1093,7 +1302,6 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         elif avg_score < 5.5: risk_category = "Partially Unfavourable"
         else: risk_category = "Unfavourable"
 
-        # Confidence score based on fact check consensus accuracy
         if state.get("entity_status") == "Mismatch":
             confidence_score = 0.0
             confidence_band = "Low"
@@ -1103,7 +1311,6 @@ class UnderwriterAgent(BaseUnderwriterAgent):
             elif accuracy >= 0.5: confidence_band = "Medium"
             else: confidence_band = "Low"
 
-        # Human Escalation Logic
         human_escalation_flag = False
         if accuracy < 0.5: human_escalation_flag = True
         if mismatch: human_escalation_flag = True

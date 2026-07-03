@@ -9,13 +9,16 @@ import ModifierTable from './components/ModifierTable';
 import ExecutionTimeline from './components/ExecutionTimeline';
 import AgentResultCards from './components/AgentResultCards';
 import LiveAgentTelemetry from './components/LiveAgentTelemetry';
+import AdminLogsPanel from './components/AdminLogsPanel';
+import BatchAnalysisModal from './components/BatchAnalysisModal';
+
 import './components.css';
 
-import { 
-  reconciledProfile as mockReconciled, 
-  factCheckerClaims as mockClaims, 
-  modifiers as mockModifiers, 
-  finalVerdict as mockVerdict 
+import {
+  reconciledProfile as mockReconciled,
+  factCheckerClaims as mockClaims,
+  modifiers as mockModifiers,
+  finalVerdict as mockVerdict
 } from './data/mockData';
 
 function App() {
@@ -26,6 +29,8 @@ function App() {
   const [apiFailed, setApiFailed] = useState(false);
   const [analysisData, setAnalysisData] = useState(null);
   const [toasts, setToasts] = useState([]);
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
 
   // Automated execution flow state
   const [currentStep, setCurrentStep] = useState(0);
@@ -47,7 +52,7 @@ function App() {
       });
 
       if (!response.ok) throw new Error(`API Error: ${response.status}`);
-      
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
@@ -131,19 +136,21 @@ function App() {
   // If user changes inputs, reset step state so they can start fresh
   const handleCompanyChange = (val) => {
     setCompany(val);
-    if (currentStep > 0) {
+    if (currentStep > 0 || hasRun || apiFailed || analysisData) {
       setCurrentStep(0);
       setHasRun(false);
       setAnalysisData(null);
+      setApiFailed(false);
     }
   };
 
   const handleDomainChange = (val) => {
     setDomain(val);
-    if (currentStep > 0) {
+    if (currentStep > 0 || hasRun || apiFailed || analysisData) {
       setCurrentStep(0);
       setHasRun(false);
       setAnalysisData(null);
+      setApiFailed(false);
     }
   };
 
@@ -160,13 +167,21 @@ function App() {
 
   return (
     <div className="dashboard-container">
-      
-      <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-        <CompanyInput 
-          company={company} 
-          setCompany={handleCompanyChange} 
-          domain={domain} 
-          setDomain={handleDomainChange} 
+
+      <Header
+        isLoading={isStreaming}
+        apiFailed={apiFailed}
+        isAdminMode={isAdminMode}
+        setIsAdminMode={setIsAdminMode}
+        setIsBatchModalOpen={setIsBatchModalOpen}
+      />
+
+      <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%', paddingTop: '32px' }}>
+        <CompanyInput
+          company={company}
+          setCompany={handleCompanyChange}
+          domain={domain}
+          setDomain={handleDomainChange}
           onNextStep={handleNextStep}
           onPrevStep={handlePrevStep}
           onRunFullAnalysis={handleRunFullAnalysis}
@@ -179,17 +194,17 @@ function App() {
 
       {showWorkflow && (
         <div className="fade-in-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '32px', marginBottom: '32px' }}>
-          <LiveAgentTelemetry 
-            currentStep={currentStep} 
-            isAutoPlaying={isStreaming} 
-            hasRun={hasRun} 
+          <LiveAgentTelemetry
+            currentStep={currentStep}
+            isAutoPlaying={isStreaming}
+            hasRun={hasRun}
           />
         </div>
       )}
 
       {showVerdict && (
         <div className="fade-in-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '32px', marginBottom: '32px' }}>
-          <AgentResultCards 
+          <AgentResultCards
             reconciledProfile={activeReconciled}
             claims={activeClaims}
             modifiers={activeModifiers}
@@ -203,20 +218,29 @@ function App() {
       )}
 
       <ExecutionTimeline isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} />
-      
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
         {showReconciled && (
           <ReconciledProfile data={activeReconciled} claims={activeClaims} verdict={activeVerdict} />
         )}
-        
-        {showModifiers && <ModifierTable data={activeModifiers} />}
-        
+
+        {showModifiers && <ModifierTable data={activeModifiers} isAdminMode={isAdminMode} verdictData={activeVerdict ? { target_entity: analysisData?.target_entity, final_verdict: activeVerdict } : null} />}
+
         {showVerdict && (
           <div className="fade-in-slide-up">
             <VerdictCard data={activeVerdict} modifiers={activeModifiers} claims={activeClaims} />
           </div>
         )}
+
+        {isAdminMode && showWorkflow && (
+          <div className="fade-in-slide-up" style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
+
+            <AdminLogsPanel analysisData={analysisData || {}} />
+          </div>
+        )}
       </div>
+
+      <BatchAnalysisModal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} />
 
       {/* Toast Notifications */}
       <div className="toast-container">
