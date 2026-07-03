@@ -128,7 +128,7 @@ class BaseAgent:
         logger = self.get_logger()
         agent_name = getattr(self.config, 'name', self.__class__.__name__)
         logger.info(f"[{agent_name}] Invoking LLM for prompt/extraction...")
-        logger.info(f"[{agent_name}] Prompt input sent to LLM:\n{prompt}")
+        logger.debug(f"[{agent_name}] Full prompt sent to LLM:\n{'='*60}\n{prompt}\n{'='*60}")
 
         if is_azure:
             # For Azure, the effective API key could be standard OPENAI_API_KEY if AZURE_OPENAI_API_KEY is not set
@@ -139,6 +139,7 @@ class BaseAgent:
                 raise ValueError("Azure OpenAI detected but no endpoint configured. Set AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_BASE or OPENAI_API_BASE.")
                 
             model_name = env_deployment_name
+            logger.info(f"[{agent_name}] LLM Provider: Azure OpenAI | Deployment: {model_name} | Endpoint: {env_azure_endpoint} | API Version: {env_api_version} | Temperature: {temperature}")
             try:
                 from langchain_openai import AzureChatOpenAI
                 llm = AzureChatOpenAI(
@@ -158,6 +159,7 @@ class BaseAgent:
                 )
         elif openai_key:
             model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+            logger.info(f"[{agent_name}] LLM Provider: OpenAI | Model: {model_name} | Temperature: {temperature}")
             try:
                 from langchain_openai import ChatOpenAI
                 llm = ChatOpenAI(
@@ -173,6 +175,7 @@ class BaseAgent:
                 )
         elif groq_key:
             model_name = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+            logger.info(f"[{agent_name}] LLM Provider: Groq | Model: {model_name} | Temperature: {temperature}")
             llm = ChatGroq(
                 model=model_name,
                 api_key=groq_key,
@@ -226,6 +229,8 @@ class BaseAgent:
             raise RuntimeError(f"Error calling live model: {e}")
 
     def parse_json(self, text: str) -> Dict[str, Any]:
+        logger = self.get_logger()
+        agent_name = getattr(self.config, 'name', self.__class__.__name__)
         cleaned = text.strip()
         # Clean any markdown code blocks
         if cleaned.startswith("```json"):
@@ -236,16 +241,23 @@ class BaseAgent:
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
 
+        logger.debug(f"[{agent_name}] parse_json input ({len(text)} chars): {text[:300]}{'...' if len(text) > 300 else ''}")
         try:
-            return json.loads(cleaned)
+            result = json.loads(cleaned)
+            logger.debug(f"[{agent_name}] parse_json success. Keys extracted: {list(result.keys()) if isinstance(result, dict) else type(result).__name__}")
+            return result
         except json.JSONDecodeError as e:
+            logger.debug(f"[{agent_name}] parse_json direct decode failed ({e}), attempting regex fallback...")
             # Fallback regex to find JSON object structure
             match = re.search(r"\{.*\}", cleaned, re.DOTALL)
             if match:
                 try:
-                    return json.loads(match.group(0))
+                    result = json.loads(match.group(0))
+                    logger.debug(f"[{agent_name}] parse_json regex fallback succeeded. Keys: {list(result.keys()) if isinstance(result, dict) else type(result).__name__}")
+                    return result
                 except json.JSONDecodeError:
                     pass
+            logger.error(f"[{agent_name}] parse_json failed entirely. Raw text:\n{text}")
             raise ValueError(f"Failed to parse LLM output as JSON. Output was: {text}. Error: {e}")
 
 class BaseCollectorAgent(BaseAgent):

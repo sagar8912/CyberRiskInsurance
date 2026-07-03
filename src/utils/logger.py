@@ -48,6 +48,15 @@ def start_run_logging(rule_id: str, company_name: str) -> str:
     current_log_time.set(now.strftime("%H-%M-%S"))
     current_company_name.set(company_name)
     current_rule_id.set(rule_id)
+
+    # Write a startup banner to every agent log so each run file has clear context
+    banner_logger = get_agent_logger("run_init")
+    banner_logger.info("=" * 60)
+    banner_logger.info(f"RUN STARTED  |  run_id={run_id}")
+    banner_logger.info(f"Company      |  {company_name}")
+    banner_logger.info(f"Rule         |  {rule_id}")
+    banner_logger.info(f"Timestamp    |  {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    banner_logger.info("=" * 60)
     
     return run_id
 
@@ -102,26 +111,33 @@ class ContextAwareFileHandler(logging.Handler):
             self.handleError(record)
 
 def get_agent_logger(agent_name: str) -> logging.Logger:
-    """Gets a static, thread-safe, memory-efficient logger for a specific agent/modifier."""
+    """Gets a static, thread-safe, memory-efficient logger for a specific agent/modifier.
+    
+    Logs at DEBUG level to capture the finest granularity of events. Both console and
+    file handlers receive all records — use log level filtering at the handler level if
+    you need quieter console output in production.
+    """
     logger_name = f"cyber_risk_insurance.{agent_name}"
     logger = logging.getLogger(logger_name)
     
     if not logger.handlers:
-        logger.setLevel(logging.INFO)
+        logger.setLevel(logging.DEBUG)   # Capture all levels (DEBUG, INFO, WARNING, ERROR)
         logger.propagate = False
         
         formatter = logging.Formatter(
-            '%(asctime)s | %(levelname)s | %(name)s | %(message)s',
+            '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
         )
         
-        # Console Stream Handler
+        # Console Stream Handler — INFO and above to keep terminal readable
         sh = logging.StreamHandler(sys.stdout)
+        sh.setLevel(logging.INFO)
         sh.setFormatter(formatter)
         logger.addHandler(sh)
         
-        # Context-aware dynamic file handler
+        # Context-aware dynamic file handler — DEBUG and above for full detail
         cfh = ContextAwareFileHandler(formatter)
+        cfh.setLevel(logging.DEBUG)
         logger.addHandler(cfh)
         
     return logger

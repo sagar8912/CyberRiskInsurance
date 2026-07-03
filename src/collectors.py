@@ -192,6 +192,8 @@ class WikidataCollectorAgent(BaseCollectorAgent):
                         return datavalue.get('value')
                     elif datavalue.get('type') == 'monolingualtext':
                         return datavalue.get('value', {}).get('text')
+                    elif datavalue.get('type') == 'quantity':
+                        return datavalue.get('value', {}).get('amount')
                 return None
 
             def extract_claim_values(prop_id):
@@ -213,6 +215,7 @@ class WikidataCollectorAgent(BaseCollectorAgent):
             operating_areas = extract_claim_values('P159')  # areas served via HQ locations
             instance_of = extract_claim_values('P31')
             parent_org = extract_claim_values('P749')
+            revenue_supplemental = extract_claim_values('P2139') # revenue supplemental
 
             raw_data = {
                 "qid": best_qid,
@@ -225,7 +228,8 @@ class WikidataCollectorAgent(BaseCollectorAgent):
                 "owned_by_ids": owned_by,
                 "parent_org_ids": parent_org,
                 "instance_of_ids": instance_of,
-                "operating_area_ids": operating_areas
+                "operating_area_ids": operating_areas,
+                "revenue_supplemental": revenue_supplemental
             }
             
             logger.info(f"[Wikidata Collector] Fetched raw claims from Wikidata entity '{best_qid}': {json.dumps(raw_data)}")
@@ -519,7 +523,8 @@ class SECCollectorAgent(BaseCollectorAgent):
                             ex21_file = name
                         elif lower_name.endswith('.htm') and 'ex' not in lower_name and not primary_doc:
                             primary_doc = name
-                            
+                    
+                    subsidiaries_list = []
                     if ex21_file:
                         file_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_no_nodashes}/{ex21_file}"
                         logger.info(f"[SEC EDGAR Collector] Requesting Exhibit 21 URL: {file_url}")
@@ -529,9 +534,20 @@ class SECCollectorAgent(BaseCollectorAgent):
                         
                         import re
                         rows = re.findall(r'<tr[^>]*>', html, re.IGNORECASE)
-                        subsidiaries_count = max(0, len(rows) - 1)
+                        for row in re.findall(r'<tr[^>]*>.*?</tr>', html, re.DOTALL | re.IGNORECASE):
+                            cells = re.findall(r'<td[^>]*>(.*?)</td>', row, re.DOTALL | re.IGNORECASE)
+                            if cells:
+                                cell_text = re.sub(r'<[^>]+>', ' ', cells[0])
+                                cell_text = re.sub(r'\s+', ' ', cell_text).strip()
+                                if cell_text and len(cell_text) > 2 and not any(k in cell_text.lower() for k in ["name of", "subsidiary", "jurisdiction", "state of", "percent", "ownership", "domestic"]):
+                                    subsidiaries_list.append(cell_text)
+                        
+                        subsidiaries_count = len(subsidiaries_list)
+                        if subsidiaries_count == 0:
+                            subsidiaries_count = max(0, len(rows) - 1)
                         logger.info(f"[SEC EDGAR Collector] Counted {subsidiaries_count} subsidiaries in Exhibit 21.")
 
+                    customer_text = ""
                     if primary_doc:
                         file_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_no_nodashes}/{primary_doc}"
                         logger.info(f"[SEC EDGAR Collector] Requesting primary 10-K filing URL: {file_url}")
@@ -547,6 +563,10 @@ class SECCollectorAgent(BaseCollectorAgent):
                         if m_bus:
                             business_text = m_bus.group(1)[:4000]
                             logger.info(f"[SEC EDGAR Collector] Extracted Item 1 Business ({len(business_text)} chars)")
+                            
+                            # Scan business section for customer segments
+                            m_cust = re.findall(r'(?i)([^.]{10,200}\b(?:customer|consumer|client|subscriber|retail|enterprise|b2b|b2c)\b[^.]{10,200}\.)', business_text)
+                            customer_text = " ".join(m_cust[:10]) if m_cust else ""
                         
                         m_risk = re.search(r'(?i)Item\s+1A\.\s+Risk Factors\b(.*?)(?:Item\s+1B|Item\s+2)', text_10k)
                         if m_risk:
@@ -566,12 +586,38 @@ class SECCollectorAgent(BaseCollectorAgent):
                 import traceback
                 logger.error(f"[SEC EDGAR Collector] Submissions or 10-K text extraction failed: {e}\n{traceback.format_exc()}")
 
+            acquisitions_mentions = []
+            try:
+                efts_search_url = f"https://efts.sec.gov/LATEST/search-index?q=acquisition%20OR%20merger%20OR%20acquired&ciks={cik}&hits.hits.total.value=true"
+                logger.info(f"[SEC EDGAR Collector] Requesting EFTS acquisitions search URL: {efts_search_url}")
+                req_efts = urllib.request.Request(efts_search_url, headers={'User-Agent': self.USER_AGENT})
+                with urllib.request.urlopen(req_efts, timeout=10) as resp_efts:
+                    resp_efts_bytes = resp_efts.read()
+                    logger.info(f"[SEC EDGAR Collector] EFTS search response received ({len(resp_efts_bytes)} bytes)")
+                    efts_data = json.loads(resp_efts_bytes.decode())
+                    
+                hits = efts_data.get('hits', {}).get('hits', [])
+                for hit in hits[:10]:
+                    src = hit.get('_source', {})
+                    file_desc = src.get('file_description', '')
+                    highlights = hit.get('highlight', {}).get('extxt', [])
+                    hl_text = " ".join(highlights) if highlights else ""
+                    desc = f"{file_desc} (Highlights: {hl_text})" if hl_text else file_desc
+                    if desc:
+                        acquisitions_mentions.append(desc)
+                logger.info(f"[SEC EDGAR Collector] Found {len(acquisitions_mentions)} recent acquisition mentions in EFTS.")
+            except Exception as e:
+                logger.warning(f"[SEC EDGAR Collector] EFTS acquisitions search failed: {e}")
+
             raw_sec_context = {
                 "cik": cik,
                 "matched_entity_name": matched_name,
                 "raw_annual_revenue": revenue_val,
                 "fiscal_year": fiscal_year,
                 "exhibit21_subsidiaries_count": subsidiaries_count,
+                "exhibit21_subsidiaries_list": subsidiaries_list,
+                "acquisitions_mentions": acquisitions_mentions,
+                "customer_segments_mentions": customer_text,
                 "quarterly_revenue": quarterly_revenue,
                 "business_section": business_text,
                 "risk_factors_section": risk_text,
@@ -624,14 +670,49 @@ class DNBCollectorAgent(BaseCollectorAgent):
                 data = json.loads(resp_bytes.decode())
                 
             if data.get("data") and len(data["data"]) > 0:
+                match_id = data["data"][0].get("id")
+                lei = match_id
                 entity = data["data"][0].get("attributes", {}).get("entity", {})
-                logger.info(f"[GLEIF DNB Collector] Matched GLEIF Entity attributes: {json.dumps(entity)}")
+                if entity.get("lei"):
+                    lei = entity.get("lei")
+                
+                logger.info(f"[GLEIF DNB Collector] Matched fuzzy completion ID: {match_id}, LEI: {lei}")
+                
+                full_entity_data = {}
+                try:
+                    record_url = f"https://api.gleif.org/api/v1/lei-records/{lei}"
+                    logger.info(f"[GLEIF DNB Collector] Requesting full record URL: {record_url}")
+                    req_record = urllib.request.Request(record_url, headers={'Accept': 'application/json', 'User-Agent': self.USER_AGENT})
+                    with urllib.request.urlopen(req_record, timeout=8) as response_record:
+                        record_bytes = response_record.read()
+                        record_json = json.loads(record_bytes.decode())
+                        
+                    full_entity_data = record_json.get("data", {})
+                    logger.info(f"[GLEIF DNB Collector] Successfully fetched full LEI record for {lei}")
+                except Exception as ex:
+                    logger.warning(f"[GLEIF DNB Collector] Failed to fetch full LEI record: {ex}. Falling back to fuzzy data.")
+                    full_entity_data = data["data"][0]
+
+                attributes = full_entity_data.get("attributes", {})
+                entity_details = attributes.get("entity", entity)
+                legal_address = attributes.get("legalAddress", {})
+                hq_address = attributes.get("headquartersAddress", {})
+                relationships = full_entity_data.get("relationships", {})
+                
+                combined_context = {
+                    "lei": lei,
+                    "entity": entity_details,
+                    "legal_address": legal_address,
+                    "headquarters_address": hq_address,
+                    "relationships": relationships,
+                    "registration": attributes.get("registration", {})
+                }
                 
                 # Pass GLEIF raw structure to LLM
                 prompt_vars = {
                     "company_name": company_name,
                     "domain": domain,
-                    "dnb_text": json.dumps(entity)
+                    "dnb_text": json.dumps(combined_context)
                 }
                 prompt = self.format_prompt(self.config.prompt_template, **prompt_vars)
                 response_text = self.call_llm(prompt)
@@ -814,7 +895,10 @@ class DomainScraperCollectorAgent(BaseCollectorAgent):
         domain_ssl_status[domain.lower()] = primary_ssl
 
         protocol = "https" if primary_ssl else "http"
-        primary_paths = ["", "/about", "/services", "/solutions", "/products", "/platform"]
+        primary_paths = [
+            "", "/about", "/services", "/solutions", "/products", "/platform",
+            "/privacy", "/privacy-policy", "/terms", "/terms-of-service"
+        ]
         primary_urls = [f"{protocol}://{domain.lower()}{p}" for p in primary_paths]
 
         logger.info(f"[Domain Scraper Collector] Stage 1: Scraping primary domain and querying crt.sh...")
@@ -832,9 +916,13 @@ class DomainScraperCollectorAgent(BaseCollectorAgent):
         if discovered_set:
             all_discovered_links.update(discovered_set)
 
+        compliance_matches = set()
         for text, links in primary_pages_results:
             all_discovered_links.update(links)
             if text:
+                for framework in ["GDPR", "CCPA", "HIPAA", "COPPA", "SOC 2", "SOC2", "PCI-DSS", "FERPA"]:
+                    if framework.lower() in text.lower():
+                        compliance_matches.add(framework)
                 chunks = text.split('.')
                 for c in chunks:
                     c = c.strip()
@@ -870,6 +958,9 @@ class DomainScraperCollectorAgent(BaseCollectorAgent):
 
             for (_, url), (text, links) in zip(cand_urls, cand_scrape_results):
                 if text:
+                    for framework in ["GDPR", "CCPA", "HIPAA", "COPPA", "SOC 2", "SOC2", "PCI-DSS", "FERPA"]:
+                        if framework.lower() in text.lower():
+                            compliance_matches.add(framework)
                     chunks = text.split('.')
                     for c in chunks:
                         c = c.strip()
@@ -881,11 +972,82 @@ class DomainScraperCollectorAgent(BaseCollectorAgent):
         domain_objects = [{"url": d, "https_encrypted": domain_ssl_status.get(d, False)} for d in discovered_domains]
         merged_text = merged_text[:15000]
 
+        # --- A. Mozilla Observatory API ---
+        mozilla_grade = None
+        try:
+            obs_url = f"https://http-observatory.security.mozilla.org/api/v1/analyze?host={domain}"
+            logger.info(f"[Domain Scraper - Observatory] Fetching Observatory grade for '{domain}'")
+            req_obs = urllib.request.Request(obs_url, method='POST', headers={'User-Agent': 'CyberRiskInsurancePOC/1.0'})
+            try:
+                with urllib.request.urlopen(req_obs, timeout=6) as resp_obs:
+                    obs_data = json.loads(resp_obs.read().decode())
+            except Exception:
+                req_obs_get = urllib.request.Request(obs_url, headers={'User-Agent': 'CyberRiskInsurancePOC/1.0'})
+                with urllib.request.urlopen(req_obs_get, timeout=6) as resp_obs:
+                    obs_data = json.loads(resp_obs.read().decode())
+            mozilla_grade = obs_data.get("grade")
+            logger.info(f"[Domain Scraper - Observatory] Observatory Grade for {domain}: {mozilla_grade}")
+        except Exception as obs_err:
+            logger.warning(f"[Domain Scraper - Observatory] Observatory lookup failed: {obs_err}")
+
+        # --- B. ToS;DR API ---
+        tosdr_grade = None
+        try:
+            tosdr_url = f"https://api.tosdr.org/service/v2/?name={domain}"
+            logger.info(f"[Domain Scraper - ToS;DR] Fetching privacy rating for '{domain}'")
+            req_tosdr = urllib.request.Request(tosdr_url, headers={'User-Agent': 'CyberRiskInsurancePOC/1.0'})
+            with urllib.request.urlopen(req_tosdr, timeout=6) as resp_tosdr:
+                tosdr_data = json.loads(resp_tosdr.read().decode())
+            services = tosdr_data.get("parameters", {}).get("services", [])
+            if services:
+                tosdr_grade = services[0].get("tosdr", {}).get("grade")
+            logger.info(f"[Domain Scraper - ToS;DR] ToS;DR Privacy Grade for {domain}: {tosdr_grade}")
+        except Exception as tosdr_err:
+            logger.warning(f"[Domain Scraper - ToS;DR] ToS;DR lookup failed: {tosdr_err}")
+
+        # --- C. RDAP Domain Lookup ---
+        creation_date = None
+        expiration_date = None
+        registrar = None
+        try:
+            rdap_url = f"https://rdap.org/domain/{domain}"
+            logger.info(f"[Domain Scraper - RDAP] Fetching domain registration dates for '{domain}'")
+            req_rdap = urllib.request.Request(rdap_url, headers={'Accept': 'application/json', 'User-Agent': 'CyberRiskInsurancePOC/1.0'})
+            with urllib.request.urlopen(req_rdap, timeout=6) as resp_rdap:
+                rdap_data = json.loads(resp_rdap.read().decode())
+            events = rdap_data.get("events", [])
+            for event in events:
+                action = event.get("eventAction")
+                date_str = event.get("eventDate")
+                if action == "registration" and date_str:
+                    creation_date = date_str.split('T')[0]
+                elif action == "expiration" and date_str:
+                    expiration_date = date_str.split('T')[0]
+            entities = rdap_data.get("entities", [])
+            for entity in entities:
+                roles = entity.get("roles", [])
+                if "registrar" in roles:
+                    registrar = entity.get("handle") or entity.get("fn")
+                    vcard = entity.get("vcardArray", [])
+                    if len(vcard) > 1:
+                        for entry in vcard[1]:
+                            if entry[0] == "fn":
+                                registrar = entry[3]
+            logger.info(f"[Domain Scraper - RDAP] RDAP Creation Date: {creation_date}, Expiration: {expiration_date}, Registrar: {registrar}")
+        except Exception as rdap_err:
+            logger.warning(f"[Domain Scraper - RDAP] RDAP lookup failed: {rdap_err}")
+
         raw_context = {
             "url": domain,
             "https_encrypted": primary_ssl,
             "discovered_domains": domain_objects,
-            "homepage_html_snippet": merged_text
+            "homepage_html_snippet": merged_text,
+            "compliance_frameworks": list(compliance_matches),
+            "mozilla_observatory_grade": mozilla_grade,
+            "tosdr_privacy_grade": tosdr_grade,
+            "domain_creation_date": creation_date,
+            "domain_expiration_date": expiration_date,
+            "domain_registrar": registrar
         }
 
         try:
@@ -925,6 +1087,57 @@ class DomainScraperCollectorAgent(BaseCollectorAgent):
 
 class ResponsesAPICollectorAgent(BaseCollectorAgent):
 
+    def _query_tavily(self, query: str, api_key: str) -> dict:
+        import urllib.request
+        import json
+        logger = self.get_logger()
+        try:
+            url = "https://api.tavily.com/search"
+            payload = json.dumps({
+                "api_key": api_key,
+                "query": query,
+                "search_depth": "basic",
+                "include_answer": False
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                url,
+                data=payload,
+                headers={'Content-Type': 'application/json', 'User-Agent': 'CyberRiskInsurancePOC/1.0'}
+            )
+            logger.info(f"[Responses API Collector - Tavily] Requesting URL: {url}")
+            with urllib.request.urlopen(req, timeout=10) as response:
+                resp_bytes = response.read()
+                logger.info(f"[Responses API Collector - Tavily] Received search response ({len(resp_bytes)} bytes)")
+                return json.loads(resp_bytes.decode('utf-8'))
+        except Exception as e:
+            logger.error(f"[Responses API Collector - Tavily] Fetch failed for '{query}': {e}")
+            return {}
+
+    def _query_brave(self, query: str, api_key: str) -> dict:
+        import urllib.request
+        import urllib.parse
+        import json
+        logger = self.get_logger()
+        try:
+            q = urllib.parse.quote(query)
+            url = f"https://api.search.brave.com/res/v1/web/search?q={q}"
+            req = urllib.request.Request(
+                url,
+                headers={
+                    'X-Subscription-Token': api_key,
+                    'Accept': 'application/json',
+                    'User-Agent': 'CyberRiskInsurancePOC/1.0'
+                }
+            )
+            logger.info(f"[Responses API Collector - Brave] Requesting URL: {url}")
+            with urllib.request.urlopen(req, timeout=10) as response:
+                resp_bytes = response.read()
+                logger.info(f"[Responses API Collector - Brave] Received search response ({len(resp_bytes)} bytes)")
+                return json.loads(resp_bytes.decode('utf-8'))
+        except Exception as e:
+            logger.error(f"[Responses API Collector - Brave] Fetch failed for '{query}': {e}")
+            return {}
+
     def _search_google(self, query: str, api_key: str) -> dict:
         import urllib.request
         import urllib.parse
@@ -947,57 +1160,84 @@ class ResponsesAPICollectorAgent(BaseCollectorAgent):
         import asyncio
         logger = self.get_logger()
         
-        api_key = os.environ.get("SERPAPI_API_KEY")
+        tavily_key = os.environ.get("TAVILY_API_KEY")
+        brave_key = os.environ.get("BRAVE_SEARCH_API_KEY")
+        serpapi_key = os.environ.get("SERPAPI_API_KEY")
+        
         # Support ENABLE_RESPONSES_API flag for tests/backwards compatibility
         enable_flag = os.environ.get("ENABLE_RESPONSES_API", "false").lower() == "true"
         
-        if not api_key and not enable_flag:
-            logger.warning("[Responses API Collector] SERPAPI_API_KEY is not configured in the environment. Skipping collection.")
+        if not tavily_key and not brave_key and not serpapi_key and not enable_flag:
+            logger.warning("[Responses API Collector] No Search API keys are configured (Tavily, Brave, or SerpAPI). Skipping collection.")
             return {
                 "source": self.config.source_name,
                 "status": "skipped",
-                "message": "SERPAPI_API_KEY is not configured.",
+                "message": "No search API key configured.",
                 "findings": {}
             }
 
         # Fallback dummy API key for testing if ENABLE_RESPONSES_API is true but key is missing
-        if not api_key:
-            api_key = "test_key_dummy"
+        if not tavily_key and not brave_key and not serpapi_key:
+            tavily_key = "test_key_dummy"
 
-        logger.info(f"[Responses API Collector] Starting SerpAPI searches for '{company_name}'")
+        logger.info(f"[Responses API Collector] Starting searches for '{company_name}'")
         queries = [
             f"{company_name} official website domains",
             f"{company_name} annual revenue acquisitions"
         ]
 
-        async def run_query(q: str) -> dict:
-            return await asyncio.to_thread(self._search_google, q, api_key)
-
-        results = await asyncio.gather(*[run_query(q) for q in queries])
+        # Query
+        results = []
+        search_engine_used = "SerpAPI"
+        if tavily_key:
+            search_engine_used = "Tavily"
+            results = await asyncio.gather(*[asyncio.to_thread(self._query_tavily, q, tavily_key) for q in queries])
+        elif brave_key:
+            search_engine_used = "Brave"
+            results = await asyncio.gather(*[asyncio.to_thread(self._query_brave, q, brave_key) for q in queries])
+        else:
+            search_engine_used = "SerpAPI"
+            results = await asyncio.gather(*[asyncio.to_thread(self._search_google, q, serpapi_key) for q in queries])
 
         # Parse and format search results context
         search_text_parts = []
         for i, res in enumerate(results):
             query_used = queries[i]
-            search_text_parts.append(f"=== Search Query: {query_used} ===")
+            search_text_parts.append(f"=== Search Query ({search_engine_used}): {query_used} ===")
             
-            # Extract structured answers if present in SerpAPI response
-            answer_box = res.get("answer_box", {})
-            if answer_box:
-                search_text_parts.append(f"Answer Box: {json.dumps(answer_box)}")
-                
-            kg = res.get("knowledge_graph", {})
-            if kg:
-                search_text_parts.append(f"Knowledge Graph: {json.dumps(kg)}")
-                
-            organic = res.get("organic_results", [])
-            if not organic and not answer_box and not kg:
-                search_text_parts.append("No results found.")
-            for rank, item in enumerate(organic[:5], 1):
-                title = item.get("title", "")
-                link = item.get("link", "")
-                snippet = item.get("snippet", "")
-                search_text_parts.append(f"{rank}. {title}\n   Link: {link}\n   Snippet: {snippet}")
+            if search_engine_used == "Tavily":
+                items = res.get("results", [])
+                if not items:
+                    search_text_parts.append("No results found.")
+                for rank, item in enumerate(items[:5], 1):
+                    title = item.get("title", "")
+                    link = item.get("url", "")
+                    snippet = item.get("content", "")
+                    search_text_parts.append(f"{rank}. {title}\n   Link: {link}\n   Snippet: {snippet}")
+            elif search_engine_used == "Brave":
+                items = res.get("web", {}).get("results", [])
+                if not items:
+                    search_text_parts.append("No results found.")
+                for rank, item in enumerate(items[:5], 1):
+                    title = item.get("title", "")
+                    link = item.get("url", "")
+                    snippet = item.get("description", "")
+                    search_text_parts.append(f"{rank}. {title}\n   Link: {link}\n   Snippet: {snippet}")
+            else: # SerpAPI
+                answer_box = res.get("answer_box", {})
+                if answer_box:
+                    search_text_parts.append(f"Answer Box: {json.dumps(answer_box)}")
+                kg = res.get("knowledge_graph", {})
+                if kg:
+                    search_text_parts.append(f"Knowledge Graph: {json.dumps(kg)}")
+                organic = res.get("organic_results", [])
+                if not organic and not answer_box and not kg:
+                    search_text_parts.append("No results found.")
+                for rank, item in enumerate(organic[:5], 1):
+                    title = item.get("title", "")
+                    link = item.get("link", "")
+                    snippet = item.get("snippet", "")
+                    search_text_parts.append(f"{rank}. {title}\n   Link: {link}\n   Snippet: {snippet}")
             search_text_parts.append("")
 
         combined_search_text = "\n".join(search_text_parts)
@@ -1029,6 +1269,435 @@ class ResponsesAPICollectorAgent(BaseCollectorAgent):
                 "message": f"LLM extraction failed: {e}\n{traceback.format_exc()}",
                 "findings": {}
             }
+
+class OpenCorporatesCollectorAgent(BaseCollectorAgent):
+    USER_AGENT = 'CyberRiskInsurancePOC/1.0 (https://github.com/ShivamModi09/CyberRiskInsurance)'
+
+    async def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
+        import urllib.request
+        import urllib.parse
+        import json
+        logger = self.get_logger()
+        token = os.environ.get("OPENCORPORATES_API_KEY")
+        
+        query = urllib.parse.quote(company_name)
+        url = f"https://api.opencorporates.com/v0.4/companies/search?q={query}"
+        if token:
+            url += f"&api_token={token}"
+            logger.debug(f"[OpenCorporates Collector] API token present (using authenticated request)")
+        else:
+            logger.debug(f"[OpenCorporates Collector] No API token set (unauthenticated, rate-limited)")
+            
+        logger.info(f"[OpenCorporates Collector] Requesting URL: {url.split('api_token=')[0]}")
+        try:
+            req = urllib.request.Request(url, headers={'Accept': 'application/json', 'User-Agent': self.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=8) as response:
+                resp_bytes = response.read()
+                logger.info(f"[OpenCorporates Collector] Received response ({len(resp_bytes)} bytes, status={response.status})")
+                data = json.loads(resp_bytes.decode('utf-8'))
+                
+            companies = data.get("results", {}).get("companies", [])
+            logger.info(f"[OpenCorporates Collector] Companies returned in result set: {len(companies)}")
+            if companies:
+                company = companies[0].get("company", {})
+                logger.info(f"[OpenCorporates Collector] Matched company: '{company.get('name')}' | Jurisdiction: {company.get('jurisdiction_code')} | Status: {company.get('current_status')} | Number: {company.get('company_number')}")
+                logger.debug(f"[OpenCorporates Collector] Full company record: {json.dumps(company)}")
+                
+                prompt_vars = {
+                    "company_name": company_name,
+                    "domain": domain,
+                    "opencorporates_text": json.dumps(company)
+                }
+                prompt = self.format_prompt(self.config.prompt_template, **prompt_vars)
+                response_text = self.call_llm(prompt)
+                extracted = self.parse_json(response_text)
+                findings = {k: extracted.get(k) for k in self.config.target_fields}
+                logger.info(f"[OpenCorporates Collector] Mapped target fields: {findings}")
+                return {
+                    "source": self.config.source_name,
+                    "status": "success",
+                    "findings": findings
+                }
+            else:
+                logger.info(f"[OpenCorporates Collector] No results found for query '{company_name}'")
+                return {
+                    "source": self.config.source_name,
+                    "status": "skipped",
+                    "message": "No registry match found.",
+                    "findings": {}
+                }
+        except Exception as e:
+            import traceback
+            logger.warning(f"[OpenCorporates Collector] OpenCorporates search failed: {e}\n{traceback.format_exc()}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": str(e),
+                "findings": {}
+            }
+
+class GDELTCollectorAgent(BaseCollectorAgent):
+    USER_AGENT = 'CyberRiskInsurancePOC/1.0 (https://github.com/ShivamModi09/CyberRiskInsurance)'
+
+    async def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
+        import urllib.request
+        import urllib.parse
+        import json
+        logger = self.get_logger()
+        
+        query_str = f'"{company_name}" (cybersecurity OR breach OR lawsuit OR fine)'
+        query = urllib.parse.quote(query_str)
+        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=artlist&maxrecords=10&format=json&timespan=1M"
+        logger.info(f"[GDELT Event Monitor] Requesting news URL: {url}")
+        logger.info(f"[GDELT Event Monitor] Search query: {query_str}")
+        
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': self.USER_AGENT})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                resp_bytes = response.read()
+                logger.info(f"[GDELT Event Monitor] Received response ({len(resp_bytes)} bytes, status={response.status})")
+                data = json.loads(resp_bytes.decode('utf-8'))
+                
+            articles = data.get("articles", [])
+            logger.info(f"[GDELT Event Monitor] Found {len(articles)} matching articles.")
+            for i, art in enumerate(articles[:5], 1):
+                logger.info(f"[GDELT Event Monitor]   [{i}] Title: '{art.get('title', '')}' | Source: {art.get('domain', '')} | Date: {art.get('seendate', '')}")
+            
+            prompt_vars = {
+                "company_name": company_name,
+                "domain": domain,
+                "gdelt_text": json.dumps(articles)
+            }
+            prompt = self.format_prompt(self.config.prompt_template, **prompt_vars)
+            response_text = self.call_llm(prompt)
+            extracted = self.parse_json(response_text)
+            findings = {k: extracted.get(k) for k in self.config.target_fields}
+            logger.info(f"[GDELT Event Monitor] Mapped target fields: {findings}")
+            return {
+                "source": self.config.source_name,
+                "status": "success",
+                "findings": findings
+            }
+        except Exception as e:
+            import traceback
+            logger.warning(f"[GDELT Event Monitor] GDELT query failed: {e}\n{traceback.format_exc()}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": str(e),
+                "findings": {}
+            }
+
+class CourtListenerCollectorAgent(BaseCollectorAgent):
+    USER_AGENT = 'CyberRiskInsurancePOC/1.0 (https://github.com/ShivamModi09/CyberRiskInsurance)'
+
+    async def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
+        import urllib.request
+        import urllib.parse
+        import json
+        logger = self.get_logger()
+        token = os.environ.get("COURTLISTENER_API_KEY")
+
+        if not token:
+            logger.info("[CourtListener Collector] No API key configured, skipping.")
+            return {
+                "source": self.config.source_name,
+                "status": "skipped",
+                "message": "COURTLISTENER_API_KEY not set.",
+                "findings": {}
+            }
+
+        query = urllib.parse.quote(company_name)
+        url = f"https://www.courtlistener.com/api/rest/v4/search/?q={query}&type=r&order_by=score+desc&page_size=5"
+        logger.info(f"[CourtListener Collector] Requesting URL: {url}")
+
+        try:
+            req = urllib.request.Request(url, headers={
+                'Authorization': f'Token {token}',
+                'User-Agent': self.USER_AGENT,
+                'Accept': 'application/json'
+            })
+            with urllib.request.urlopen(req, timeout=10) as response:
+                resp_bytes = response.read()
+                logger.info(f"[CourtListener Collector] Received response ({len(resp_bytes)} bytes, status={response.status})")
+                data = json.loads(resp_bytes.decode('utf-8'))
+
+            results = data.get("results", [])
+            logger.info(f"[CourtListener Collector] Found {len(results)} docket results.")
+            for i, res in enumerate(results[:5], 1):
+                case_name = res.get('case_name', res.get('caseName', '?'))
+                court = res.get('court', res.get('court_id', '?'))
+                date_filed = res.get('date_filed', res.get('dateFiled', '?'))
+                logger.info(f"[CourtListener Collector]   [{i}] Case: '{case_name}' | Court: {court} | Filed: {date_filed}")
+
+            prompt_vars = {
+                "company_name": company_name,
+                "domain": domain,
+                "courtlistener_text": json.dumps(results[:5])
+            }
+            prompt = self.format_prompt(self.config.prompt_template, **prompt_vars)
+            response_text = self.call_llm(prompt)
+            extracted = self.parse_json(response_text)
+            findings = {k: extracted.get(k) for k in self.config.target_fields}
+            logger.info(f"[CourtListener Collector] Mapped target fields: {findings}")
+            return {
+                "source": self.config.source_name,
+                "status": "success",
+                "findings": findings
+            }
+        except Exception as e:
+            import traceback
+            logger.warning(f"[CourtListener Collector] CourtListener search failed: {e}\n{traceback.format_exc()}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": str(e),
+                "findings": {}
+            }
+
+
+class SSLLabsCollectorAgent(BaseCollectorAgent):
+    USER_AGENT = 'CyberRiskInsurancePOC/1.0 (https://github.com/ShivamModi09/CyberRiskInsurance)'
+
+    async def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
+        import urllib.request
+        import json
+        import time
+        logger = self.get_logger()
+
+        url = f"https://api.ssllabs.com/api/v3/analyze?host={domain}&fromCache=on&maxAge=72"
+        logger.info(f"[SSL Labs Collector] Requesting URL: {url}")
+
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': self.USER_AGENT,
+                'Accept': 'application/json'
+            })
+            with urllib.request.urlopen(req, timeout=15) as response:
+                resp_bytes = response.read()
+                data = json.loads(resp_bytes.decode('utf-8'))
+
+            status = data.get("status", "UNKNOWN")
+            logger.info(f"[SSL Labs Collector] Analysis status: {status}")
+
+            # If still processing, wait briefly and retry once
+            if status in ("DNS", "IN_PROGRESS"):
+                logger.info("[SSL Labs Collector] Analysis in progress, waiting 10s for cached result...")
+                time.sleep(10)
+                with urllib.request.urlopen(req, timeout=15) as response:
+                    resp_bytes = response.read()
+                    data = json.loads(resp_bytes.decode('utf-8'))
+
+            endpoints = data.get("endpoints", [])
+            grade = endpoints[0].get("grade", "Unknown") if endpoints else "Unknown"
+            logger.info(f"[SSL Labs Collector] SSL Grade: {grade}")
+
+            findings = {
+                "ssl_grade": grade,
+                "ssl_details": {
+                    "status": data.get("status"),
+                    "protocol": data.get("protocol"),
+                    "endpoints_count": len(endpoints)
+                }
+            }
+            # Map to target fields
+            findings = {k: findings.get(k) for k in self.config.target_fields}
+            return {
+                "source": self.config.source_name,
+                "status": "success",
+                "findings": findings
+            }
+        except Exception as e:
+            logger.warning(f"[SSL Labs Collector] SSL Labs scan failed: {e}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": str(e),
+                "findings": {}
+            }
+
+
+class FTCFeedCollectorAgent(BaseCollectorAgent):
+    USER_AGENT = 'CyberRiskInsurancePOC/1.0 (https://github.com/ShivamModi09/CyberRiskInsurance)'
+
+    async def collect(self, company_name: str, domain: str) -> Dict[str, Any]:
+        import urllib.request
+        import xml.etree.ElementTree as ET
+        logger = self.get_logger()
+
+        url = "https://www.ftc.gov/feeds/press-releases.xml"
+        logger.info(f"[FTC Feed Collector] Fetching FTC RSS feed: {url}")
+
+        try:
+            req = urllib.request.Request(url, headers={
+                'User-Agent': self.USER_AGENT,
+                'Accept': 'application/xml'
+            })
+            with urllib.request.urlopen(req, timeout=10) as response:
+                xml_bytes = response.read()
+                logger.info(f"[FTC Feed Collector] Received feed ({len(xml_bytes)} bytes)")
+
+            root = ET.fromstring(xml_bytes.decode('utf-8'))
+            # RSS feed structure: <rss><channel><item>...</item></channel></rss>
+            items = root.findall('.//item')
+            logger.info(f"[FTC Feed Collector] Total RSS items: {len(items)}")
+
+            company_lower = company_name.lower()
+            matches = []
+            for item in items:
+                title = item.findtext('title', '') or ''
+                description = item.findtext('description', '') or ''
+                link = item.findtext('link', '') or ''
+                pub_date = item.findtext('pubDate', '') or ''
+
+                if company_lower in title.lower() or company_lower in description.lower():
+                    matches.append({
+                        "title": title,
+                        "link": link,
+                        "date": pub_date,
+                        "snippet": description[:300]
+                    })
+
+            logger.info(f"[FTC Feed Collector] Matched {len(matches)} FTC actions for '{company_name}'.")
+            for i, m in enumerate(matches[:5], 1):
+                logger.info(f"[FTC Feed Collector]   [{i}] Title: '{m['title']}' | Date: {m['date']} | Link: {m['link']}")
+
+            findings = {
+                "ftc_actions_count": len(matches),
+                "ftc_actions": matches[:5]
+            }
+            findings = {k: findings.get(k) for k in self.config.target_fields}
+            logger.info(f"[FTC Feed Collector] Mapped target fields: {findings}")
+            return {
+                "source": self.config.source_name,
+                "status": "success",
+                "findings": findings
+            }
+        except Exception as e:
+            import traceback
+            logger.warning(f"[FTC Feed Collector] FTC feed fetch failed: {e}\n{traceback.format_exc()}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": str(e),
+                "findings": {}
+            }
+
+
+class WappalyzerCollectorAgent(BaseCollectorAgent):
+    async def collect(self, company_name: str, domain: str, **kwargs) -> Dict[str, Any]:
+        logger = self.get_logger()
+        logger.info(f"[Wappalyzer Collector] Analyzing tech stack for domain: {domain}")
+
+        try:
+            from Wappalyzer import Wappalyzer, WebPage
+        except ImportError:
+            logger.warning("[Wappalyzer Collector] python-Wappalyzer not installed, skipping.")
+            return {
+                "source": self.config.source_name,
+                "status": "skipped",
+                "message": "python-Wappalyzer not installed. Run: pip install python-Wappalyzer",
+                "findings": {}
+            }
+
+        try:
+            wappalyzer = Wappalyzer.latest(update=False)
+            target_url = f"https://{domain}"
+            logger.info(f"[Wappalyzer Collector] Fetching page for analysis: {target_url}")
+            webpage = WebPage.new_from_url(target_url, timeout=10)
+            detected = wappalyzer.analyze_with_categories(webpage)
+            logger.info(f"[Wappalyzer Collector] Detected {len(detected)} technologies.")
+
+            tech_list = []
+            has_ecommerce_platform = False
+            ecommerce_keywords = {"ecommerce", "cart", "shopify", "magento", "woocommerce", "bigcommerce", "payment"}
+
+            for tech_name, tech_info in detected.items():
+                categories = tech_info.get("categories", [])
+                tech_list.append({"name": tech_name, "categories": categories})
+                # Check if any category hints at ecommerce
+                for cat in categories:
+                    if any(kw in cat.lower() for kw in ecommerce_keywords):
+                        has_ecommerce_platform = True
+
+            findings = {
+                "detected_technologies": tech_list,
+                "has_ecommerce_platform": has_ecommerce_platform
+            }
+            findings = {k: findings.get(k) for k in self.config.target_fields}
+            return {
+                "source": self.config.source_name,
+                "status": "success",
+                "findings": findings
+            }
+        except Exception as e:
+            logger.warning(f"[Wappalyzer Collector] Tech detection failed: {e}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": str(e),
+                "findings": {}
+            }
+
+
+class CensusNAICSCollectorAgent(BaseCollectorAgent):
+    async def collect(self, company_name: str, domain: str, **kwargs) -> Dict[str, Any]:
+        import json
+        logger = self.get_logger()
+        logger.info(f"[Census NAICS Collector] Starting data collection for {company_name} ({domain})")
+        logger.info(f"[Census NAICS Collector] Looking up NAICS mapping for '{company_name}'")
+
+        # Load the static SIC→NAICS map
+        map_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'naics_sic_map.json')
+        try:
+            with open(map_path, 'r') as f:
+                sic_naics_map = json.load(f)
+        except FileNotFoundError:
+            logger.warning(f"[Census NAICS Collector] Map file not found at: {map_path}")
+            return {
+                "source": self.config.source_name,
+                "status": "error",
+                "message": "naics_sic_map.json not found.",
+                "findings": {}
+            }
+
+        # Try to get SIC codes from kwargs (passed from state by the workflow node)
+        sic_codes = kwargs.get("sic_codes", [])
+        if not sic_codes:
+            logger.info("[Census NAICS Collector] No SIC codes provided, returning empty mapping.")
+            return {
+                "source": self.config.source_name,
+                "status": "skipped",
+                "message": "No SIC codes available for NAICS mapping.",
+                "findings": {}
+            }
+
+        naics_results = []
+        for sic in sic_codes:
+            sic_str = str(sic).strip()
+            entry = sic_naics_map.get(sic_str)
+            if entry:
+                naics_results.append({
+                    "sic_code": sic_str,
+                    "naics_code": entry["naics"],
+                    "naics_description": entry["description"]
+                })
+                logger.info(f"[Census NAICS Collector] Mapped SIC {sic_str} → NAICS {entry['naics']} ({entry['description']})")
+            else:
+                logger.info(f"[Census NAICS Collector] No NAICS mapping found for SIC {sic_str}")
+
+        findings = {
+            "naics_code": naics_results[0]["naics_code"] if naics_results else None,
+            "naics_description": naics_results[0]["naics_description"] if naics_results else None,
+            "naics_mappings": naics_results
+        }
+        findings = {k: findings.get(k) for k in self.config.target_fields}
+        return {
+            "source": self.config.source_name,
+            "status": "success",
+            "findings": findings
+        }
+
 
 class WebSearchCollectorAgent(BaseCollectorAgent):
     async def collect(self, company_name: str, domain: str) -> Dict[str, Any]:

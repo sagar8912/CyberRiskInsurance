@@ -1,5 +1,4 @@
 # Python caching
-.env
 __pycache__/
 *.py[cod]
 *$py.class
@@ -29,13 +28,10 @@ data/changes/
 frontend/node_modules/
 frontend/dist/
 
-# Local PDF/reference files
-data/cyber_rater_modifier_summary.pdf
-
-# Exclude run logs and generated audit reports
+# Exclude run logs, stories, and generated audit reports
 logs/
 reports/
+story.md
 
-# Temporary / Zip files & reports
-18_06_report.md
+# Temporary / Zip files & cache
 .cache/

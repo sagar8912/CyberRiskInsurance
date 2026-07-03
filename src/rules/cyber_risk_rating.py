@@ -145,6 +145,7 @@ Your output JSON must contain:
 - "registration_authority": object details.
 - "legal_form": object details.
 - "founding_year": numerical year extracted from incorporationDate or registrationDate, or null if not found.
+- "relationships": object representing Level-2 corporate direct-parent/ultimate-parent relationship links, or null.
 """,
     required_vars=["company_name", "domain", "dnb_text"]
 )
@@ -153,14 +154,14 @@ DNB = CollectorAgentConfig(
     name="D&B GLEIF Collector",
     agent_type="dnb",
     prompt_template=DNB_PROMPT,
-    target_fields=["legal_name", "country", "legal_address", "headquarters_address", "registration_authority", "legal_form", "founding_year"],
+    target_fields=["legal_name", "country", "legal_address", "headquarters_address", "registration_authority", "legal_form", "founding_year", "relationships"],
     source_name="DBCollector"
 )
 
 DOMAIN_PROMPT = PromptTemplate(
     template="""You are an expert domain scraper parser.
 Analyze the following connection details and combined HTML content scraped from multiple discovered domains for {company_name} ({domain}) and extract key details.
-Context (includes primary and discovered subdomains/aliases):
+Context (includes primary and discovered subdomains/aliases, TLS grades, ToS;DR data, and registration dates):
 {scraper_text}
 
 {format_instructions}
@@ -180,6 +181,11 @@ Your output JSON must contain:
 - "privacy_policy_url": string (extracted URL).
 - "terms_url": string (extracted URL).
 - "products_services_portfolio": list of strings (e.g. products, services, platforms, SaaS indicators, cloud offerings, payment offerings, healthcare offerings, insurance offerings).
+- "mozilla_observatory_grade": string (the TLS/security grade from mozilla observatory context, e.g. "B+", or null).
+- "tosdr_privacy_grade": string (the privacy rating grade from ToS;DR context, e.g. "C", or null).
+- "domain_creation_date": string (the domain creation date from RDAP/WHOIS, e.g. "2005-12-01", or null).
+- "domain_expiration_date": string (the domain expiration date from RDAP/WHOIS, e.g. "2026-12-01", or null).
+- "domain_registrar": string (the domain registrar name from RDAP/WHOIS, e.g. "GoDaddy", or null).
 """,
     required_vars=["company_name", "domain", "scraper_text"]
 )
@@ -193,7 +199,9 @@ DOMAIN = CollectorAgentConfig(
         "domains", "privacy_policy_published", "compliance_mentions", "customer_type", "has_ecommerce",
         "industries_served", "customer_segments", "business_model", "b2b_b2c_confidence",
         "ecommerce_evidence", "cloud_saas_indicators", "data_sensitive_indicators",
-        "privacy_policy_url", "terms_url", "products_services_portfolio"
+        "privacy_policy_url", "terms_url", "products_services_portfolio",
+        "mozilla_observatory_grade", "tosdr_privacy_grade", "domain_creation_date",
+        "domain_expiration_date", "domain_registrar"
     ],
     source_name="DomainScraper"
 )
@@ -219,6 +227,121 @@ RESPONSES = CollectorAgentConfig(
     prompt_template=RESPONSES_PROMPT,
     target_fields=["official_websites", "revenue", "acquisitions"],
     source_name="ResponsesAPI"
+)
+
+
+OPENCORPORATES_PROMPT = PromptTemplate(
+    template="""You are an expert underwriter extraction agent.
+Analyze the following OpenCorporates company details for {company_name} ({domain}) and extract key registration attributes.
+OpenCorporates Context:
+{opencorporates_text}
+
+{format_instructions}
+Your output JSON must contain:
+- "incorporation_date": string registration date (YYYY-MM-DD), or null.
+- "jurisdiction_code": string jurisdiction code (e.g. us_de), or null.
+- "company_number": string registration number, or null.
+- "status": string registration status (e.g. Active, Dissolved), or null.
+""",
+    required_vars=["company_name", "domain", "opencorporates_text"]
+)
+
+OPENCORPORATES = CollectorAgentConfig(
+    name="OpenCorporates Collector",
+    agent_type="opencorporates",
+    prompt_template=OPENCORPORATES_PROMPT,
+    target_fields=["incorporation_date", "jurisdiction_code", "company_number", "status"],
+    source_name="OpenCorporates"
+)
+
+GDELT_PROMPT = PromptTemplate(
+    template="""You are an expert underwriter extraction agent.
+Analyze the following GDELT news events and articles context for {company_name} ({domain}) and extract cybersecurity, breach, or negative media events.
+GDELT Context:
+{gdelt_text}
+
+{format_instructions}
+Your output JSON must contain:
+- "negative_events_count": numerical count of relevant negative events found.
+- "negative_events_details": list of objects representing events. Each object: {{"title": string, "url": string, "date": string, "summary": string}}.
+- "has_cyber_breach": boolean (whether a ransomware, leak, cyberattack or data breach incident is explicitly mentioned).
+""",
+    required_vars=["company_name", "domain", "gdelt_text"]
+)
+
+GDELT = CollectorAgentConfig(
+    name="GDELT Event Monitor",
+    agent_type="gdelt",
+    prompt_template=GDELT_PROMPT,
+    target_fields=["negative_events_count", "negative_events_details", "has_cyber_breach"],
+    source_name="GDELT"
+)
+
+
+COURTLISTENER_PROMPT = PromptTemplate(
+    template="""You are an expert underwriter extraction agent.
+Analyze the following CourtListener docket search results for {company_name} ({domain}) and extract litigation findings.
+CourtListener Context:
+{courtlistener_text}
+
+{format_instructions}
+Your output JSON must contain:
+- "has_active_litigation": boolean (whether any active, pending, or recent cyber/data/IP litigation cases were found).
+- "litigation_cases": list of objects. Each: {{"case_name": string, "court": string, "date_filed": string, "relevance": string}}.
+""",
+    required_vars=["company_name", "domain", "courtlistener_text"]
+)
+
+COURTLISTENER = CollectorAgentConfig(
+    name="CourtListener Collector",
+    agent_type="courtlistener",
+    prompt_template=COURTLISTENER_PROMPT,
+    target_fields=["has_active_litigation", "litigation_cases"],
+    source_name="CourtListener"
+)
+
+SSLLABS = CollectorAgentConfig(
+    name="SSL Labs Collector",
+    agent_type="ssllabs",
+    prompt_template=PromptTemplate(
+        template="SSL Labs grade lookup for {company_name} ({domain}). No LLM needed.",
+        required_vars=["company_name", "domain"]
+    ),
+    target_fields=["ssl_grade", "ssl_details"],
+    source_name="SSLLabs"
+)
+
+FTC = CollectorAgentConfig(
+    name="FTC Feed Collector",
+    agent_type="ftc",
+    prompt_template=PromptTemplate(
+        template="FTC RSS feed scan for {company_name} ({domain}). No LLM needed.",
+        required_vars=["company_name", "domain"]
+    ),
+    target_fields=["ftc_actions_count", "ftc_actions"],
+    source_name="FTC"
+)
+
+WAPPALYZER = CollectorAgentConfig(
+    name="Wappalyzer Collector",
+    agent_type="wappalyzer",
+    prompt_template=PromptTemplate(
+        template="Wappalyzer tech detection for {company_name} ({domain}). No LLM needed.",
+        required_vars=["company_name", "domain"]
+    ),
+    target_fields=["detected_technologies", "has_ecommerce_platform"],
+    source_name="Wappalyzer"
+)
+
+CENSUS_NAICS = CollectorAgentConfig(
+    name="Census NAICS Collector",
+    agent_type="census_naics",
+    prompt_template=PromptTemplate(
+        template="Census NAICS lookup for {company_name} ({domain}). No LLM needed.",
+        required_vars=["company_name", "domain"]
+    ),
+    target_fields=["naics_code", "naics_description"],
+    source_name="CensusNAICS"
 )
 
 
@@ -248,6 +371,7 @@ Output a single consolidated profile with the following fields:
 - "disruption_speed": number (1 to 5).
 - "recovery_complexity": number (1 to 5).
 - "founding_year": numerical year or null.
+- "has_cyber_breach": boolean.
 """,
     required_vars=["company_name", "domain", "reports_json"]
 )
@@ -260,10 +384,15 @@ COORD = CoordinatorConfig(
         "revenue", "subsidiaries", "acquisitions", "customer_type", "has_ecommerce",
         "domains", "countries_of_operation", "privacy_policy_published", "compliance_mentions",
         "quarterly_revenue", "sic_codes", "services_appetite", "internet_exposure_domains",
-        "customer_base_scale", "founding_year"
+        "customer_base_scale", "founding_year", "has_cyber_breach",
+        "has_active_litigation", "ssl_grade", "ftc_actions_count",
+        "detected_technologies", "has_ecommerce_platform", "naics_code", "naics_description"
     ],
     computed_fields=["usa_presence", "continent_spread"],
-    report_sources=["Wikipedia", "Wikidata", "SECCollector", "DBCollector", "DomainScraper"]
+    report_sources=[
+        "Wikipedia", "Wikidata", "SECCollector", "DBCollector", "DomainScraper",
+        "OpenCorporates", "GDELT", "CourtListener", "SSLLabs", "FTC", "Wappalyzer", "CensusNAICS"
+    ]
 )
 
 # Fact Checker config
@@ -346,7 +475,7 @@ UW = UnderwriterConfig(
         "continent_spread", "usa_presence", "privacy_policy_published", "compliance_mentions",
         "quarterly_revenue", "sic_codes", "services_appetite", "internet_exposure_domains",
         "customer_base_scale", "digital_exposure", "disruption_speed", "recovery_complexity",
-        "founding_year"
+        "founding_year", "has_cyber_breach"
     ],
     log_fields=[
         "revenue", "customer_type", "has_ecommerce"
@@ -365,7 +494,14 @@ CONFIG = BusinessRuleConfig(
         "sec": SEC,
         "dnb": DNB,
         "domain": DOMAIN,
-        "responses": RESPONSES
+        "responses": RESPONSES,
+        "opencorporates": OPENCORPORATES,
+        "gdelt": GDELT,
+        "courtlistener": COURTLISTENER,
+        "ssllabs": SSLLABS,
+        "ftc": FTC,
+        "wappalyzer": WAPPALYZER,
+        "census_naics": CENSUS_NAICS
     },
     coordinator_config=COORD,
     fact_checker_config=FACT,
