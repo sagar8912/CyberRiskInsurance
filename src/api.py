@@ -21,9 +21,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from typing import Optional
 class AnalysisRequest(BaseModel):
     company: str
     domain: str
+    run_id: Optional[str] = None
+
+import threading
+import time
+
+# Thread-safe in-memory status cache for fallback polling resiliency with configurable TTL
+CACHE_TTL_SECONDS = int(os.getenv("RUN_STATUS_CACHE_TTL", "3600"))  # Default: 3600s (60 minutes)
+
+from src.utils.run_status import run_status_cache, RunStatusCacheManager
+
+
+@app.on_event("startup")
+async def start_cache_cleanup_task():
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(300)  # Lightweight check every 5 minutes
+            try:
+                run_status_cache.cleanup_expired()
+            except Exception as e:
+                pass
+    asyncio.create_task(periodic_cleanup())
+
+@app.get("/api/run-status/{run_id}")
+@app.get("/run-status/{run_id}")
+async def get_run_status(run_id: str):
+    logger = run_status_cache._get_logger()
+    logger.info(f"[RunStatusCache] Poll request received for run_id={run_id}")
+    data = run_status_cache.get_run(run_id)
+    if not data:
+        logger.warning(
+            f"[RunStatusCache] Cache miss for run_id={run_id}. "
+            f"Explanation: The requested run_id does not exist in the active cache. "
+            f"Why this happens: (1) The initial POST /api/analyze/stream request failed or was aborted before initializing the run on the backend, "
+            f"(2) The run completed/failed and exceeded the {run_status_cache.ttl_seconds}s TTL and was removed by cleanup, "
+            f"or (3) An invalid run_id was provided."
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=f"Run ID '{run_id}' not found in active cache. It may have expired after TTL or failed to initialize."
+        )
+    logger.info(f"[RunStatusCache] Cache hit for run_id={run_id}, status={data.get('status')}, step={data.get('step')}")
+    return data
 
 def format_analysis_response(final_state: dict, company_name: str, domain: str) -> dict:
     from src.utils.logger import get_agent_logger
@@ -178,19 +221,25 @@ def format_analysis_response(final_state: dict, company_name: str, domain: str) 
     }
 
 @app.post("/api/analyze")
+@app.post("/analyze")
 async def analyze_company(req: AnalysisRequest):
+    import uuid, time
     rule_id = "cyber_risk_rating"
     company_name = req.company.strip()
     domain = req.domain.strip()
+    run_id = req.run_id or f"run_{int(time.time())}_{uuid.uuid4().hex[:8]}"
 
     if not company_name or not domain:
         raise HTTPException(status_code=400, detail="Company and domain are required")
+
+    run_status_cache.create_run(run_id, company_name, domain)
 
     # Compile the LangGraph workflow
     graph = build_cyber_risk_rating_graph(enable_cache=True)
 
     # Initial State
     initial_state = {
+        "run_id": run_id,
         "company_name": company_name,
         "domain": domain,
         "rule_id": rule_id,
@@ -224,27 +273,37 @@ async def analyze_company(req: AnalysisRequest):
     try:
         final_state = await graph.ainvoke(initial_state)
     except Exception as e:
+        run_status_cache.fail_run(run_id, str(e))
         raise HTTPException(status_code=500, detail=f"Graph execution failed: {str(e)}")
 
     if not final_state.get("valid"):
+        run_status_cache.fail_run(run_id, "Invalid company name or domain")
         raise HTTPException(status_code=400, detail="The input company name or domain is invalid.")
 
-    return format_analysis_response(final_state, company_name, domain)
+    res = format_analysis_response(final_state, company_name, domain)
+    run_status_cache.complete_run(run_id, 7, res)
+    return res
 
 @app.post("/api/analyze/stream")
+@app.post("/analyze/stream")
 async def analyze_company_stream(req: AnalysisRequest):
+    import uuid, time
     rule_id = "cyber_risk_rating"
     company_name = req.company.strip()
     domain = req.domain.strip()
+    run_id = req.run_id or f"run_{int(time.time())}_{uuid.uuid4().hex[:8]}"
 
     if not company_name or not domain:
         raise HTTPException(status_code=400, detail="Company and domain are required")
+
+    run_status_cache.create_run(run_id, company_name, domain)
 
     # Compile the LangGraph workflow
     graph = build_cyber_risk_rating_graph(enable_cache=True)
 
     # Initial State
     initial_state = {
+        "run_id": run_id,
         "company_name": company_name,
         "domain": domain,
         "rule_id": rule_id,
@@ -272,55 +331,119 @@ async def analyze_company_stream(req: AnalysisRequest):
         "audit_logs": []
     }
 
-    from src.utils.logger import start_run_logging
+    from src.utils.logger import start_run_logging, get_agent_logger
     start_run_logging(rule_id, company_name)
+    api_logger = get_agent_logger("API")
+    api_logger.info(f"Streaming request received for company: {company_name}, domain: {domain}, run_id: {run_id}")
 
     async def event_generator():
         final_state = None
+        queue = asyncio.Queue()
+
+        async def run_graph_stream():
+            nonlocal final_state
+            try:
+                async for event in graph.astream_events(initial_state, version="v2"):
+                    await queue.put({"kind": "event", "data": event})
+            except Exception as e:
+                await queue.put({"kind": "error", "error": e})
+            finally:
+                await queue.put(None)
+
+        stream_task = asyncio.create_task(run_graph_stream())
+        api_logger.info(f"[{time.time():.3f}] [SSE STREAM OPENED] Stream opened for {company_name} (run_id: {run_id})")
+
         try:
             # Yield step 1: Initialized
-            yield f"data: {json.dumps({'type': 'step', 'step': 1, 'node': 'initial', 'status': 'done'})}\n\n"
+            ts = time.time()
+            run_status_cache.update_run(run_id, step=1, node="initial")
+            api_logger.info(f"[{ts:.3f}] [SSE YIELD] Emitting step=1, node=initial")
+            yield f"data: {json.dumps({'type': 'step', 'step': 1, 'node': 'initial', 'status': 'done', 'run_id': run_id})}\n\n"
+            api_logger.info(f"[{time.time():.3f}] [SSE FLUSHED] Chunk sent to ASGI transport for step=1, node=initial")
             
-            async for event in graph.astream_events(initial_state, version="v2"):
+            while True:
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=1.5)
+                except asyncio.TimeoutError:
+                    # Heartbeat to keep connection alive and defeat reverse proxy buffering
+                    hb_time = int(time.time())
+                    api_logger.debug(f"[{time.time():.3f}] [SSE YIELD] Emitting heartbeat {hb_time}")
+                    yield f": heartbeat {hb_time}\n\n"
+                    api_logger.debug(f"[{time.time():.3f}] [SSE FLUSHED] Heartbeat chunk sent to ASGI transport")
+                    continue
+
+                if msg is None:
+                    break
+
+                if msg.get("kind") == "error":
+                    raise msg["error"]
+
+                event = msg["data"]
                 event_kind = event.get("event")
                 
                 # Check for node/chain ending
-                if event_kind == "on_chain_end":
-                    node = event.get("metadata", {}).get("langgraph_node")
+                if event_kind in ("on_chain_start", "on_chain_end"):
+                    node = event.get("metadata", {}).get("langgraph_node") or event.get("name", "")
                     if node:
                         step = None
-                        if node == "supervisor_node":
+                        node_for_log = node
+                        if node in ("supervisor_node", "supervisor"):
                             step = 2
-                        elif node in ["wiki", "wikidata", "sec", "dnb", "domain", "responses"]:
-                            step = 3
-                        elif node == "coordinator":
+                            node_for_log = "supervisor_node"
+                        elif node in ("coordinator", "coordinator_node", "census_naics", "census_naics_node"):
                             step = 4
-                        elif node == "fact_checker":
+                            node_for_log = "coordinator_node"
+                        elif node in ("fact_checker", "fact_checker_node"):
                             step = 5
-                        elif node == "underwriter":
+                            node_for_log = "fact_checker_node"
+                        elif node in ("underwriter", "underwriter_node"):
                             step = 6
+                            node_for_log = "underwriter_node"
+                        elif not node.startswith("__") and not any(k in node for k in ("coordinator", "fact_checker", "underwriter", "supervisor", "census_naics", "langgraph", "channel", "edge")):
+                            step = 3
+                            node_for_log = "collector_node"
                             
                         if step is not None:
-                            yield f"data: {json.dumps({'type': 'step', 'step': step, 'node': node, 'status': 'done'})}\n\n"
+                            ts = time.time()
+                            run_status_cache.update_run(run_id, step=step, node=node_for_log)
+                            api_logger.info(f"[{ts:.3f}] [SSE YIELD] Emitting step={step}, node={node_for_log}")
+                            yield f"data: {json.dumps({'type': 'step', 'step': step, 'node': node_for_log, 'status': 'done', 'run_id': run_id})}\n\n"
+                            api_logger.info(f"[{time.time():.3f}] [SSE FLUSHED] Chunk sent to ASGI transport for step={step}, node={node_for_log}")
                             
                 # Capture the final result from the root LangGraph chain ending
                 if event_kind == "on_chain_end" and not event.get("metadata", {}).get("langgraph_node"):
                     output = event.get("data", {}).get("output")
-                    if isinstance(output, dict) and "risk_category" in output and "confidence_score" in output:
+                    if isinstance(output, dict) and "risk_assessment" in output and "risk_category" in output:
                         final_state = output
             
             if final_state:
                 if not final_state.get("valid"):
+                    run_status_cache.fail_run(run_id, "Invalid company name or domain")
+                    api_logger.warning("Streaming event error: Input company or domain invalid")
                     yield f"data: {json.dumps({'type': 'error', 'message': 'The input company name or domain is invalid.'})}\n\n"
                 else:
                     formatted = format_analysis_response(final_state, company_name, domain)
-                    from src.utils.logger import get_agent_logger
-                    get_agent_logger("API").info("START API Return")
-                    yield f"data: {json.dumps({'type': 'result', 'step': 7, 'data': formatted})}\n\n"
+                    ts = time.time()
+                    run_status_cache.complete_run(run_id, 7, formatted)
+                    api_logger.info(f"[{ts:.3f}] [SSE YIELD] Emitting step=7, result=success")
+                    yield f"data: {json.dumps({'type': 'result', 'step': 7, 'data': formatted, 'run_id': run_id})}\n\n"
+                    api_logger.info(f"[{time.time():.3f}] [SSE FLUSHED] Chunk sent to ASGI transport for step=7, result=success")
             else:
+                run_status_cache.fail_run(run_id, "Graph execution completed without final state")
+                api_logger.error("Streaming event error: Graph completed without final state")
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Graph execution completed without final state.'})}\n\n"
                 
         except Exception as e:
+            run_status_cache.fail_run(run_id, str(e))
+            api_logger.error(f"Streaming event exception: {str(e)}")
             yield f"data: {json.dumps({'type': 'error', 'message': f'Graph execution failed: {str(e)}'})}\n\n"
+        finally:
+            api_logger.info(f"[{time.time():.3f}] [SSE STREAM CLOSED] Streaming connection closed for {company_name}")
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)

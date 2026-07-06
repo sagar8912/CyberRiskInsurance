@@ -19,6 +19,13 @@ DOMAIN_ALIASES = {
 def supervisor_node(state: Dict[str, Any]) -> Dict[str, Any]:
     name = state.get("company_name", "").strip()
     domain = state.get("domain", "").strip()
+    run_id = state.get("run_id")
+    if run_id:
+        try:
+            from src.utils.run_status import run_status_cache
+            run_status_cache.update_run(run_id, step=2, node="supervisor_node")
+        except Exception:
+            pass
     
     logs = []
     logs.append(f"Supervisor: Validating input - Name: '{name}', Domain: '{domain}'")

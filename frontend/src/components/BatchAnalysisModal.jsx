@@ -242,11 +242,29 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
       setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'Running', errorMsg: '' } : r));
 
       const startTime = Date.now();
+      const runId = 'batch_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      const apiUrl = (import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== '')
+        ? import.meta.env.VITE_API_URL
+        : (import.meta.env.PROD ? '' : 'http://localhost:8000');
+
+      let sseActive = true;
+      let lastEventTime = Date.now();
+      const abortController = new AbortController();
+
+      const watchdog = setInterval(() => {
+        if (sseActive && Date.now() - lastEventTime > 6000) {
+          console.warn(`[Batch Resiliency] SSE watchdog timed out for ${row.company}. Aborting stream and falling back to polling...`);
+          sseActive = false;
+          abortController.abort();
+        }
+      }, 2000);
+
       try {
-        const response = await fetch('http://localhost:8000/api/analyze/stream', {
+        const response = await fetch(`${apiUrl}/api/analyze/stream`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ company: row.company, domain: row.domain })
+          body: JSON.stringify({ company: row.company, domain: row.domain, run_id: runId }),
+          signal: abortController.signal
         });
 
         if (!response.ok) throw new Error(`API Error: ${response.status}`);
@@ -258,7 +276,7 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
         let hasError = false;
         let errorStr = '';
 
-        while (true) {
+        while (sseActive) {
           if (cancelRef.current) {
             reader.cancel();
             break;
@@ -266,13 +284,17 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
           const { value, done } = await reader.read();
           if (done) break;
 
+          lastEventTime = Date.now();
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
           for (const line of lines) {
             const trimmed = line.trim();
-            if (trimmed.startsWith('data:')) {
+            if (trimmed.startsWith(': heartbeat')) {
+              lastEventTime = Date.now();
+            } else if (trimmed.startsWith('data:')) {
+              lastEventTime = Date.now();
               const dataStr = trimmed.slice(5).trim();
               if (dataStr) {
                 try {
@@ -291,6 +313,12 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
           }
         }
         
+        clearInterval(watchdog);
+
+        if (!sseActive && !cancelRef.current) {
+          throw new Error("SSE aborted by watchdog. Initiating fallback polling...");
+        }
+
         const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
         if (cancelRef.current) {
@@ -311,8 +339,48 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
         }
 
       } catch (err) {
-        const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
-        setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'Failed', errorMsg: err.message, executionTime } : r));
+        clearInterval(watchdog);
+        if (cancelRef.current) {
+          setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'Pending' } : r));
+          break;
+        }
+        console.warn(`[Batch Resiliency] SSE failed for ${row.company}. Switching to polling /api/run-status/${runId} every 2s...`, err);
+        let polledComplete = false;
+        let attempts = 0;
+        while (attempts < 60 && !cancelRef.current) {
+          attempts++;
+          try {
+            const res = await fetch(`${apiUrl}/api/run-status/${runId}`);
+            if (res.ok) {
+              const statusData = await res.json();
+              const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
+              if (statusData.status === 'completed' && statusData.result) {
+                console.info("[Polling] Stopped because run completed");
+                const finalData = statusData.result;
+                const verdict = finalData.final_verdict?.verdict || 'Unknown';
+                const confidence = finalData.final_verdict?.confidence_score || 0;
+                setRows(prev => prev.map(r => r.id === row.id ? { 
+                  ...r, status: 'Completed', verdict, confidence, errorMsg: '', rawData: finalData, executionTime 
+                } : r));
+                polledComplete = true;
+                break;
+              } else if (statusData.status === 'failed') {
+                setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'Failed', errorMsg: statusData.error || 'Workflow failed', executionTime } : r));
+                polledComplete = true;
+                break;
+              }
+            } else if (res.status === 404 && attempts > 5) {
+              break;
+            }
+          } catch (pErr) {
+            console.error("[Batch Polling] Error checking run status:", pErr);
+          }
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        if (!polledComplete && !cancelRef.current) {
+          const executionTime = ((Date.now() - startTime) / 1000).toFixed(1);
+          setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'Failed', errorMsg: "Polling fallback timeout.", executionTime } : r));
+        }
       }
     }
 

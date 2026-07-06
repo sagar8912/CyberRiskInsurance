@@ -104,9 +104,9 @@ export default function AdminLogsPanel({ analysisData }) {
       <div style={{ marginTop: '16px' }}>
         <h3 style={{ fontSize: '0.9rem', color: '#94A3B8', marginBottom: '8px' }}>Collector Outputs</h3>
         <div style={{ background: '#020617', padding: '16px', borderRadius: '8px', maxHeight: '250px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.8rem', color: '#38BDF8', whiteSpace: 'pre-wrap' }}>
-          {Object.keys(collectorOutputs).length > 0
-            ? JSON.stringify(collectorOutputs, null, 2)
-            : "No collector outputs attached to payload."}
+           {Object.keys(collectorOutputs).length > 0 
+             ? JSON.stringify(collectorOutputs, null, 2) 
+             : "No collector outputs attached to payload."}
         </div>
       </div>
 
