@@ -329,7 +329,7 @@ WAPPALYZER = CollectorAgentConfig(
         template="Wappalyzer tech detection for {company_name} ({domain}). No LLM needed.",
         required_vars=["company_name", "domain"]
     ),
-    target_fields=["detected_technologies", "has_ecommerce_platform"],
+    target_fields=["detected_technologies", "has_ecommerce"],
     source_name="Wappalyzer"
 )
 
@@ -386,7 +386,7 @@ COORD = CoordinatorConfig(
         "quarterly_revenue", "sic_codes", "services_appetite", "internet_exposure_domains",
         "customer_base_scale", "founding_year", "has_cyber_breach",
         "has_active_litigation", "ssl_grade", "ftc_actions_count",
-        "detected_technologies", "has_ecommerce_platform", "naics_code", "naics_description"
+        "detected_technologies", "has_ecommerce", "naics_code", "naics_description"
     ],
     computed_fields=["usa_presence", "continent_spread"],
     report_sources=[

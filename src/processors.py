@@ -53,11 +53,31 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             "digital_exposure": 3,
             "disruption_speed": 3,
             "recovery_complexity": 3,
-            "founding_year": None
+            "founding_year": None,
+            "has_cyber_breach": False,
+            "has_active_litigation": False,
+            "ftc_actions_count": 0,
+            "detected_technologies": [],
+            "ssl_grade": None,
+            "naics_code": None,
+            "naics_description": None,
+            "country": None
         }
 
-        # 1. Merge logic with priority: SEC > GLEIF/DBCollector > Wikidata > Wikipedia > ResponsesAPI
-        sources_order = ["SECCollector", "DBCollector", "Wikidata", "Wikipedia", "ResponsesAPI", "DomainScraper"]
+        # 1. Merge logic with priority: SEC > GLEIF/DBCollector > OpenCorporates > Wikidata > Wikipedia > ResponsesAPI > GDELT > CourtListener > SSLLabs > FTC > Wappalyzer > CensusNAICS
+        sources_order = [
+            "SECCollector", "DBCollector", "OpenCorporates", "Wikidata", "Wikipedia", 
+            "ResponsesAPI", "DomainScraper", "GDELT", "CourtListener", "SSLLabs", "FTC", 
+            "Wappalyzer", "CensusNAICS"
+        ]
+
+        # Check if we should skip SECCollector
+        skip_sec = state.get("skip_sec", False)
+        sec_report = reports.get("SECCollector", {})
+        if skip_sec or sec_report.get("status") == "skipped":
+            if "SECCollector" in sources_order:
+                sources_order.remove("SECCollector")
+                logs.append("Coordinator: SECCollector skipped/missing — removed from sources priority list.")
 
         conflict_flags = []
 
@@ -140,6 +160,14 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
                     if c_norm and c_norm.lower() not in seen_countries:
                         seen_countries.add(c_norm.lower())
                         all_countries.append(c_norm)
+            # Also merge SEC's geographic_revenue_or_regions
+            sec_geo = get_val(src, "geographic_revenue_or_regions")
+            if sec_geo and isinstance(sec_geo, list):
+                for g in sec_geo:
+                    g_norm = str(g).strip()
+                    if g_norm and g_norm.lower() not in seen_countries:
+                        seen_countries.add(g_norm.lower())
+                        all_countries.append(g_norm)
         if all_countries:
             merged["countries_of_operation"] = all_countries
 
@@ -183,6 +211,49 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             if val is not None:
                 merged["founding_year"] = val
                 break
+        for src in sources_order:
+            val = get_val(src, "has_cyber_breach")
+            if val is not None:
+                merged["has_cyber_breach"] = bool(val)
+                break
+        for src in sources_order:
+            val = get_val(src, "has_active_litigation")
+            if val is not None:
+                merged["has_active_litigation"] = bool(val)
+                break
+        for src in sources_order:
+            val = get_val(src, "ftc_actions_count")
+            if val is not None:
+                try:
+                    merged["ftc_actions_count"] = int(val)
+                except ValueError:
+                    merged["ftc_actions_count"] = 0
+                break
+        for src in sources_order:
+            val = get_val(src, "detected_technologies")
+            if val and isinstance(val, list):
+                merged["detected_technologies"] = val
+                break
+        for src in sources_order:
+            val = get_val(src, "ssl_grade")
+            if val is not None:
+                merged["ssl_grade"] = str(val).strip()
+                break
+        for src in sources_order:
+            val = get_val(src, "naics_code")
+            if val is not None:
+                merged["naics_code"] = str(val).strip()
+                break
+        for src in sources_order:
+            val = get_val(src, "naics_description")
+            if val is not None:
+                merged["naics_description"] = str(val).strip()
+                break
+        for src in sources_order:
+            val = get_val(src, "country")
+            if val is not None:
+                merged["country"] = str(val).strip()
+                break
 
         # Domains / HTTPS — first take what DomainScraper found
         for src in sources_order:
@@ -217,9 +288,13 @@ class CollectionCoordinatorAgent(BaseCoordinatorAgent):
             logger.info(f"[COORDINATOR] Dynamic SIC inference resolved: {inferred_sic} (original was {final_sic})")
             merged["sic_codes"] = inferred_sic
 
-        # Re-verify USA Presence
+        # Re-verify USA Presence (using countries of operation + primary HQ country fallback)
         countries_lower = [c.lower() for c in merged["countries_of_operation"]]
-        merged["usa_presence"] = ("usa" in countries_lower or "united states" in countries_lower or "us" in countries_lower)
+        hq_country = str(merged.get("country", "")).lower()
+        merged["usa_presence"] = (
+            "usa" in countries_lower or "united states" in countries_lower or "us" in countries_lower or
+            "usa" in hq_country or "united states" in hq_country or "us" in hq_country
+        )
 
         # Detect conflicts (e.g. if SEC revenue differs significantly from Wikidata/Gleif revenue)
         revenues_found = {}
@@ -625,7 +700,26 @@ class UnderwriterAgent(BaseUnderwriterAgent):
             if enc_count == total_domains and total_domains > 0: p_factors.append(f"100% of discovered external domains ({total_domains}) utilize HTTPS")
             elif total_domains > 0: r_factors.append(f"{total_domains - enc_count} out of {total_domains} external domains lack HTTPS encryption")
 
-            modifier_scores["Domain Encryption"] = {"score": f"{enc_count}/{total_domains}", "rating": enc_rating}
+            ssl_grade = reconciled.get("ssl_grade")
+            if ssl_grade:
+                ssl_grade_clean = str(ssl_grade).upper().strip()
+                # A poor SSL grade is anything C or lower (C, D, E, F, or T)
+                if ssl_grade_clean in ["C", "D", "E", "F", "T"]:
+                    if enc_rating == "favourable":
+                        enc_rating = "average"
+                    elif enc_rating == "partially favourable":
+                        enc_rating = "partially unfavourable"
+                    elif enc_rating == "average":
+                        enc_rating = "unfavourable"
+                    
+                    rule_matched.append(f"SSL Labs Grade == '{ssl_grade_clean}' (Poor SSL/TLS Configuration)")
+                    desc += f" Furthermore, SSL Labs returned a poor security grade of '{ssl_grade_clean}', indicating vulnerable configurations or protocols."
+                    r_factors.append(f"Insecure SSL/TLS configuration on primary domain (Grade: {ssl_grade_clean})")
+                else:
+                    rule_matched.append(f"SSL Labs Grade == '{ssl_grade_clean}'")
+                    p_factors.append(f"Strong SSL/TLS grade on primary domain (Grade: {ssl_grade_clean})")
+
+            modifier_scores["Domain Encryption"] = {"score": f"{enc_count}/{total_domains} (SSL Grade: {ssl_grade or 'N/A'})", "rating": enc_rating}
             underwriting_rationale["Domain Encryption"] = {
                 "decision_summary": f"Encryption ratio evaluated across {total_domains} discovered domain(s).",
                 "rule_id": bucket,
@@ -635,13 +729,17 @@ class UnderwriterAgent(BaseUnderwriterAgent):
                 "input_values": {
                     "Total Domains": total_domains,
                     "Encrypted Domains (HTTPS)": enc_count,
-                    "Encryption Ratio": f"{(enc_count/total_domains)*100:.0f}%" if total_domains > 0 else "N/A"
+                    "Encryption Ratio": f"{(enc_count/total_domains)*100:.0f}%" if total_domains > 0 else "N/A",
+                    "SSL Labs Grade": ssl_grade or "N/A"
                 },
                 "matched_bucket": bucket,
                 "assigned_category": enc_rating.title(),
-                "reason": generate_reason(enc_rating.title(), {"Total Domains": total_domains,
+                "reason": generate_reason(enc_rating.title(), {
+                    "Total Domains": total_domains,
                     "Encrypted Domains (HTTPS)": enc_count,
-                    "Encryption Ratio": f"{(enc_count/total_domains)*100:.0f}%" if total_domains > 0 else "N/A"}, bucket, desc),
+                    "Encryption Ratio": f"{(enc_count/total_domains)*100:.0f}%" if total_domains > 0 else "N/A",
+                    "SSL Labs Grade": ssl_grade or "N/A"
+                }, bucket, desc),
                 "business_impact": ["Strong protection against man-in-the-middle attacks", "Lower likelihood of credential interception"] if "favourable" in enc_rating else ["High risk of data-in-transit interception", "Increased potential for credential theft over unencrypted channels"],
                 "positive_factors": p_factors,
                 "risk_factors": r_factors
@@ -812,7 +910,19 @@ class UnderwriterAgent(BaseUnderwriterAgent):
             s_score, s_kw = score_text_logged(sic_str)
             c_score, c_kw = score_text_logged(compliance_str)
 
-            weights = {"p": 0.40, "i": 0.30, "s": 0.20, "c": 0.10}
+            # Map detected technologies list to a string representation for semantic check
+            tech_items = []
+            for t in reconciled.get("detected_technologies", []):
+                if isinstance(t, dict):
+                    tech_items.append(t.get("name", ""))
+                    tech_items.extend(t.get("categories", []))
+                else:
+                    tech_items.append(str(t))
+            tech_str = ", ".join(tech_items)
+            t_score, t_kw = score_text_logged(tech_str)
+
+            # Updated weights including technologies
+            weights = {"p": 0.35, "i": 0.25, "s": 0.15, "c": 0.10, "t": 0.15}
             total_score = 0.0
             total_weight = 0.0
 
@@ -820,6 +930,7 @@ class UnderwriterAgent(BaseUnderwriterAgent):
             if i_score is not None: total_score += i_score * weights["i"]; total_weight += weights["i"]
             if s_score is not None: total_score += s_score * weights["s"]; total_weight += weights["s"]
             if c_score is not None: total_score += c_score * weights["c"]; total_weight += weights["c"]
+            if t_score is not None: total_score += t_score * weights["t"]; total_weight += weights["t"]
 
             rule_matched = []
             appetite = None
@@ -845,7 +956,7 @@ class UnderwriterAgent(BaseUnderwriterAgent):
             
             p_factors, r_factors = [], []
             if "low_risk" in appetite: p_factors.append("Low risk industry sector identified via semantic analysis")
-            if "high_risk" in appetite: r_factors.append(f"High risk industry keyword identified: '{p_kw or i_kw or s_kw}'")
+            if "high_risk" in appetite: r_factors.append(f"High risk industry/technology keyword identified: '{p_kw or i_kw or s_kw or t_kw}'")
 
             modifier_scores["Nature of services"] = {"score": appetite, "rating": services_rating}
             underwriting_rationale["Nature of services"] = {
@@ -858,14 +969,18 @@ class UnderwriterAgent(BaseUnderwriterAgent):
                     "Matched Products Keyword": p_kw or "None",
                     "Matched Industry Keyword": i_kw or "None",
                     "Matched SIC Keyword": s_kw or "None",
+                    "Matched Tech Keyword": t_kw or "None",
                     "Calculated Risk Score": f"{final_score:.2f} / 3.0" if total_weight > 0 else "Fallback"
                 },
                 "matched_bucket": bucket,
                 "assigned_category": services_rating.title(),
-                "reason": generate_reason(services_rating.title(), {"Matched Products Keyword": p_kw or "None",
+                "reason": generate_reason(services_rating.title(), {
+                    "Matched Products Keyword": p_kw or "None",
                     "Matched Industry Keyword": i_kw or "None",
                     "Matched SIC Keyword": s_kw or "None",
-                    "Calculated Risk Score": f"{final_score:.2f} / 3.0" if total_weight > 0 else "Fallback"}, bucket, f"Companies providing {appetite.replace('_', ' ')} services generally face {services_rating} intrinsic cyber exposure."),
+                    "Matched Tech Keyword": t_kw or "None",
+                    "Calculated Risk Score": f"{final_score:.2f} / 3.0" if total_weight > 0 else "Fallback"
+                }, bucket, f"Companies providing {appetite.replace('_', ' ')} services generally face {services_rating} intrinsic cyber exposure."),
                 "business_impact": ["Organizations offering highly sensitive services (like healthcare or financial platforms) inherently carry a higher baseline cyber exposure", "Elevated severity for business interruption impacts"],
                 "positive_factors": p_factors,
                 "risk_factors": r_factors
@@ -1335,6 +1450,13 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         underwriter_logger.info(f"- Subsidiaries: {len(reconciled.get('subsidiaries', []))} subsidiaries")
         underwriter_logger.info(f"- Acquisitions: {len(reconciled.get('acquisitions', []))} acquisitions")
         underwriter_logger.info(f"- Founding Year: {reconciled.get('founding_year')}")
+        underwriter_logger.info(f"- Has Cyber Breach: {reconciled.get('has_cyber_breach')}")
+        underwriter_logger.info(f"- Has Active Litigation: {reconciled.get('has_active_litigation')}")
+        underwriter_logger.info(f"- FTC Actions Count: {reconciled.get('ftc_actions_count')}")
+        underwriter_logger.info(f"- SSL Grade: {reconciled.get('ssl_grade')}")
+        underwriter_logger.info(f"- Detected Tech Count: {len(reconciled.get('detected_technologies', []))}")
+        underwriter_logger.info(f"- Primary Country: {reconciled.get('country')}")
+        underwriter_logger.info(f"- NAICS Code: {reconciled.get('naics_code')}")
         underwriter_logger.info("----------------------------------------")
         underwriter_logger.info("Final Aggregated Modifiers Result:")
         underwriter_logger.info(f"Average Numeric Score: {avg_score:.3f}")

@@ -43,12 +43,75 @@ function App() {
     }, 4000);
   };
 
+  const runPollingFallback = async (runId, apiUrl) => {
+    console.warn(`[Resiliency] Switching to fallback polling /api/run-status/${runId} every 2s...`);
+    addToast("Switched to polling mode for live updates", "info");
+    let attempts = 0;
+    while (attempts < 60) {
+      attempts++;
+      try {
+        const res = await fetch(`${apiUrl}/api/run-status/${runId}`);
+        if (res.ok) {
+          const statusData = await res.json();
+          if (statusData.step) {
+            setCurrentStep(prev => Math.max(prev, statusData.step));
+          }
+          if (statusData.status === 'completed' && statusData.result) {
+            console.info("[Polling] Stopped because run completed");
+            setAnalysisData(statusData.result);
+            setHasRun(true);
+            setIsStreaming(false);
+            addToast("Analysis completed successfully", "success");
+            setApiFailed(false);
+            return;
+          } else if (statusData.status === 'failed') {
+            console.error("Workflow error:", statusData.error);
+            addToast(statusData.error || "Workflow failed", "error");
+            setApiFailed(true);
+            setIsStreaming(false);
+            return;
+          }
+        } else if (res.status === 404 && attempts > 5) {
+          break;
+        }
+      } catch (err) {
+        console.error("[Polling] Error checking run status:", err);
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    console.error("Polling fallback failed. Using mock data.");
+    setApiFailed(true);
+    setIsStreaming(false);
+    setCurrentStep(7);
+    setHasRun(true);
+    addToast("Failed to connect. Using cached mock data.", "warning");
+  };
+
   const streamAnalysis = async () => {
+    const runId = 'run_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    const apiUrl = (import.meta.env.VITE_API_URL !== undefined && import.meta.env.VITE_API_URL !== '')
+      ? import.meta.env.VITE_API_URL
+      : (import.meta.env.PROD ? '' : 'http://localhost:8000');
+
+    let sseActive = true;
+    let lastEventTime = Date.now();
+    const abortController = new AbortController();
+
+    // Watchdog timer: If SSE connects but no events (not even heartbeats or steps) arrive for >6s, abort SSE and switch to polling
+    const watchdog = setInterval(() => {
+      if (sseActive && Date.now() - lastEventTime > 6000) {
+        console.warn("[Resiliency] SSE watchdog timed out (no incremental events). Aborting stream and falling back to polling...");
+        sseActive = false;
+        abortController.abort();
+      }
+    }, 2000);
+
     try {
-      const response = await fetch('http://localhost:8000/api/analyze/stream', {
+      const response = await fetch(`${apiUrl}/api/analyze/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company, domain })
+        body: JSON.stringify({ company, domain, run_id: runId }),
+        signal: abortController.signal
       });
 
       if (!response.ok) throw new Error(`API Error: ${response.status}`);
@@ -57,17 +120,21 @@ function App() {
       const decoder = new TextDecoder('utf-8');
       let buffer = '';
 
-      while (true) {
+      while (sseActive) {
         const { value, done } = await reader.read();
         if (done) break;
 
+        lastEventTime = Date.now();
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.startsWith('data:')) {
+          if (trimmed.startsWith(': heartbeat')) {
+            lastEventTime = Date.now();
+          } else if (trimmed.startsWith('data:')) {
+            lastEventTime = Date.now();
             const dataStr = trimmed.slice(5).trim();
             if (dataStr) {
               try {
@@ -79,11 +146,16 @@ function App() {
                   setHasRun(true);
                   setIsStreaming(false);
                   addToast("Analysis completed successfully", "success");
+                  setApiFailed(false);
+                  clearInterval(watchdog);
+                  return;
                 } else if (event.type === 'error') {
                   console.error("Workflow error:", event.message);
                   addToast(event.message, "error");
                   setApiFailed(true);
                   setIsStreaming(false);
+                  clearInterval(watchdog);
+                  return;
                 }
               } catch (e) {
                 console.error("Failed to parse event JSON:", e, dataStr);
@@ -92,14 +164,14 @@ function App() {
           }
         }
       }
-      setApiFailed(false);
+      clearInterval(watchdog);
+      if (!sseActive) {
+        await runPollingFallback(runId, apiUrl);
+      }
     } catch (error) {
-      console.error("Backend fetch/stream failed. Falling back to mock data.", error);
-      setApiFailed(true);
-      setIsStreaming(false);
-      setCurrentStep(7);
-      setHasRun(true);
-      addToast("Failed to connect. Using cached mock data.", "warning");
+      clearInterval(watchdog);
+      console.warn("SSE fetch failed or aborted. Initiating fallback polling mechanism...", error);
+      await runPollingFallback(runId, apiUrl);
     }
   };
 
@@ -214,7 +286,7 @@ function App() {
       )}
 
       {showWorkflow && (
-        <AgentWorkflow isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} />
+        <AgentWorkflow isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} collectorOutputs={analysisData?.collectorOutputs} />
       )}
 
       <ExecutionTimeline isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} />

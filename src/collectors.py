@@ -1096,7 +1096,7 @@ class ResponsesAPICollectorAgent(BaseCollectorAgent):
             payload = json.dumps({
                 "api_key": api_key,
                 "query": query,
-                "search_depth": "basic",
+                "search_depth": "advanced",
                 "include_answer": False
             }).encode('utf-8')
             req = urllib.request.Request(
@@ -1182,8 +1182,9 @@ class ResponsesAPICollectorAgent(BaseCollectorAgent):
 
         logger.info(f"[Responses API Collector] Starting searches for '{company_name}'")
         queries = [
-            f"{company_name} official website domains",
-            f"{company_name} annual revenue acquisitions"
+            f"{company_name} official website URL",
+            f"{company_name} annual revenue recent years",
+            f"{company_name} corporate acquisitions mergers list"
         ]
 
         # Query
@@ -1609,7 +1610,7 @@ class WappalyzerCollectorAgent(BaseCollectorAgent):
             logger.info(f"[Wappalyzer Collector] Detected {len(detected)} technologies.")
 
             tech_list = []
-            has_ecommerce_platform = False
+            has_ecommerce = False
             ecommerce_keywords = {"ecommerce", "cart", "shopify", "magento", "woocommerce", "bigcommerce", "payment"}
 
             for tech_name, tech_info in detected.items():
@@ -1618,11 +1619,11 @@ class WappalyzerCollectorAgent(BaseCollectorAgent):
                 # Check if any category hints at ecommerce
                 for cat in categories:
                     if any(kw in cat.lower() for kw in ecommerce_keywords):
-                        has_ecommerce_platform = True
+                        has_ecommerce = True
 
             findings = {
                 "detected_technologies": tech_list,
-                "has_ecommerce_platform": has_ecommerce_platform
+                "has_ecommerce": has_ecommerce
             }
             findings = {k: findings.get(k) for k in self.config.target_fields}
             return {

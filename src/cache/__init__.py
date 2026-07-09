@@ -99,7 +99,15 @@ class CachingCollectorWrapper:
                     logger.info(f"[{agent_name}] Extraction complete (cached): status={res.get('status', 'success')}, findings={res.get('findings')}")
                     return res
                     
-        logger.info(f"[{agent_name}] Cache miss. Executing live harvesting...")
-        result = await self.base_collector.collect(company_name, domain, *args, **kwargs)
+        logger.info(f"[{agent_name}] Cache miss. Executing live harvesting in background threadpool...")
+        import asyncio
+        def _runner():
+            loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop)
+                return loop.run_until_complete(self.base_collector.collect(company_name, domain, *args, **kwargs))
+            finally:
+                loop.close()
+        result = await asyncio.to_thread(_runner)
         logger.info(f"[{agent_name}] Extraction complete: status={result.get('status')}, findings={result.get('findings')}")
         return result

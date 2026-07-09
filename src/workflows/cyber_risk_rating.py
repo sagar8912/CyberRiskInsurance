@@ -41,6 +41,7 @@ class CyberRiskRatingState(TypedDict, total=False):
     domain: str
     business_rule: str
     rule_id: str
+    run_id: str
 
     # Status / Supervisor
     valid: bool
@@ -52,6 +53,7 @@ class CyberRiskRatingState(TypedDict, total=False):
     cache_data: Any
     routing_tier: str
     tool_budget: list
+    skip_sec: bool
 
     # Core workflow data
     reports: Annotated[dict, merge_reports]
@@ -152,7 +154,16 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
         wf_log = get_agent_logger("workflow")
         t0 = time.time()
         wf_log.info("[Workflow Node] sec_node → START")
-        rep = await sec.collect(state["company_name"], state["domain"])
+        if state.get("skip_sec"):
+            wf_log.info("[Workflow Node] sec_node → SKIPPED (non-SEC company)")
+            rep = {
+                "source": "SECCollector",
+                "status": "skipped",
+                "message": "Company not registered with SEC EDGAR.",
+                "findings": {}
+            }
+        else:
+            rep = await sec.collect(state["company_name"], state["domain"])
         elapsed = (time.time() - t0) * 1000
         wf_log.info(f"[Workflow Node] sec_node → DONE (status={rep.get('status', '?')}, elapsed={elapsed:.0f}ms)")
         return {"reports": {"SECCollector": rep}, "collected_evidence": {"SECCollector": rep}}
@@ -294,29 +305,59 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
         wf_log.info(f"[Workflow Node] underwriter_node → DONE (elapsed={elapsed:.0f}ms, total_tokens={token_sum.get('total_tokens', '?')}, total_cost=${token_sum.get('total_cost', 0):.4f})")
         return {"risk_assessment": res, **res, "token_summary": token_sum}
 
+    def _update_step(state: dict, step: int, node: str):
+        run_id = state.get("run_id")
+        if run_id:
+            try:
+                from src.utils.run_status import run_status_cache
+                run_status_cache.update_run(run_id, step=step, node=node)
+            except Exception:
+                pass
+
+    def with_step(fn, step: int, node_name: str, is_underwriter: bool = False):
+        async def wrapped(state: CyberRiskRatingState) -> dict:
+            _update_step(state, step, node_name)
+            res = await fn(state)
+            if not is_underwriter:
+                _update_step(state, step, node_name)
+            else:
+                run_id = state.get("run_id")
+                if run_id:
+                    try:
+                        from src.api import format_analysis_response
+                        from src.utils.run_status import run_status_cache
+                        merged_final = {**state, **res}
+                        formatted = format_analysis_response(merged_final, state.get("company_name", ""), state.get("domain", ""))
+                        run_status_cache.complete_run(run_id, 7, formatted)
+                    except Exception as e:
+                        wf_log = get_agent_logger("workflow")
+                        wf_log.error(f"Error completing run status cache in underwriter_node: {e}")
+            return res
+        return wrapped
+
     # 2. Build graph structure
     g = StateGraph(CyberRiskRatingState)
     g.add_node("supervisor_node", supervisor_node)
     
     # Collectors
-    g.add_node("wiki", wiki_node, retry_policy=api_retry)
-    g.add_node("wikidata", wikidata_node, retry_policy=api_retry)
-    g.add_node("sec", sec_node, retry_policy=api_retry)
-    g.add_node("dnb", dnb_node, retry_policy=api_retry)
-    g.add_node("domain", domain_node, retry_policy=api_retry)
-    g.add_node("responses", responses_node, retry_policy=api_retry)
-    g.add_node("opencorporates", opencorporates_node, retry_policy=api_retry)
-    g.add_node("gdelt", gdelt_node, retry_policy=api_retry)
-    g.add_node("courtlistener", courtlistener_node, retry_policy=api_retry)
-    g.add_node("ssllabs", ssllabs_node, retry_policy=api_retry)
-    g.add_node("ftc", ftc_node, retry_policy=api_retry)
-    g.add_node("wappalyzer", wappalyzer_node, retry_policy=api_retry)
-    g.add_node("census_naics", census_naics_node, retry_policy=api_retry)
+    g.add_node("wiki", with_step(wiki_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("wikidata", with_step(wikidata_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("sec", with_step(sec_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("dnb", with_step(dnb_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("domain", with_step(domain_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("responses", with_step(responses_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("opencorporates", with_step(opencorporates_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("gdelt", with_step(gdelt_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("courtlistener", with_step(courtlistener_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("ssllabs", with_step(ssllabs_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("ftc", with_step(ftc_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("wappalyzer", with_step(wappalyzer_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("census_naics", with_step(census_naics_node, 4, "coordinator_node"), retry_policy=api_retry)
 
     # Processors
-    g.add_node("coordinator", coordinator_node, retry_policy=api_retry)
-    g.add_node("fact_checker", fact_checker_node, retry_policy=api_retry)
-    g.add_node("underwriter", underwriter_node, retry_policy=api_retry)
+    g.add_node("coordinator", with_step(coordinator_node, 4, "coordinator_node"), retry_policy=api_retry)
+    g.add_node("fact_checker", with_step(fact_checker_node, 5, "fact_checker_node"), retry_policy=api_retry)
+    g.add_node("underwriter", with_step(underwriter_node, 6, "underwriter_node", is_underwriter=True), retry_policy=api_retry)
 
     # Entrypoint
     g.set_entry_point("supervisor_node")
