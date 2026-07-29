@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { UploadCloud, X, Play, FileText, AlertTriangle, Loader2, Download, Square, Edit2, Trash2, ArrowLeft, FileOutput, Printer } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -7,13 +7,14 @@ import ReconciledProfile from './ReconciledProfile';
 import ModifierTable from './ModifierTable';
 import VerdictCard from './VerdictCard';
 import { downloadReportHtml, printReportPdf } from './EvidenceReportGenerator';
+import PortfolioDashboard from './PortfolioDashboard';
 
 // Constants for alias matching
 const COMPANY_ALIASES = ['company_name', 'company', 'companyname', 'name', 'insuredname', 'accountname', 'clientname', 'organization', 'entityname'];
 const DOMAIN_ALIASES = ['domain_url', 'domain', 'website', 'url', 'company_url', 'webaddress', 'site', 'homepage'];
 
 function normalizeHeader(h) {
-  return h.toLowerCase().replace(/[\s_\-]/g, '');
+  return h.toLowerCase().replace(/[\s_-]/g, '');
 }
 
 function normalizeDomain(d) {
@@ -24,21 +25,47 @@ function normalizeDomain(d) {
   return clean;
 }
 
+// ─── Field mapping helpers ────────────────────────────────────────────────────
+// Backend API returns:
+//   final_verdict.riskCategory      → normalised verdict string
+//   final_verdict.underwritingScore → confidence as "72%" string
+//   reconciled_profile.revenue      → flat string e.g. "$1,234,567" or "Not Available"
+//   reconciled_profile.customerType → customer type string
+//   wikidata_output.country         → country string
+//   wikidata_output.industry        → industry string
+
+function parseConfidence(val) {
+  if (val == null) return null;
+  if (typeof val === 'number') return val;
+  const n = parseFloat(String(val).replace('%', ''));
+  return isNaN(n) ? null : n;
+}
+
+function cleanField(val) {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (s === '' || s === 'N/A' || s === 'Not Available' || s === 'None' || s === 'null') return null;
+  return s;
+}
+
 const getSummary = (rawData) => {
   if (!rawData) return {};
-  const profile = rawData.reconciled_profile || {};
-  const claims = rawData.fact_checker_claims || [];
-  
+  const profile  = rawData.reconciled_profile || {};
+  const wikidata = rawData.wikidata_output    || {};
+  const claims   = rawData.fact_checker_claims || [];
+
   return {
-    revenue: profile.financials?.revenue || 'N/A',
-    country: profile.headquarters?.country || 'N/A',
-    industry: profile.firmographics?.industry || 'N/A',
-    naics: profile.firmographics?.naics_code || 'N/A',
-    subsidiaries: profile.firmographics?.subsidiaries?.length || 0,
-    privacy: profile.digital_presence?.privacy_policy_present ? 'Yes' : 'No',
-    ecommerce: profile.digital_presence?.ecommerce_capabilities ? 'Yes' : 'No',
-    customerType: profile.digital_presence?.primary_customer_type || 'N/A',
-    sources: claims.length
+    // revenue lives as a flat string on reconciled_profile
+    revenue:      cleanField(profile.revenue)      || cleanField(wikidata.headquarters) || null,
+    // country / industry come from wikidata_output, NOT reconciled_profile.headquarters
+    country:      cleanField(wikidata.country)     || null,
+    industry:     cleanField(wikidata.industry)    || null,
+    naics:        cleanField(profile.naics_code)   || null,
+    subsidiaries: cleanField(profile.subsidiariesCount) || null,
+    privacy:      profile.privacyPolicy === true ? 'Yes' : profile.privacyPolicy === false ? 'No' : null,
+    ecommerce:    profile.ecommercePlatform === true ? 'Yes' : profile.ecommercePlatform === false ? 'No' : null,
+    customerType: cleanField(profile.customerType) || null,
+    sources:      claims.length,
   };
 };
 
@@ -305,7 +332,7 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
                     hasError = true;
                     errorStr = event.message;
                   }
-                } catch (e) {
+                } catch {
                   // ignore
                 }
               }
@@ -329,8 +356,9 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
         if (hasError) {
           setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'Failed', errorMsg: errorStr, executionTime } : r));
         } else if (finalData) {
-          const verdict = finalData.final_verdict?.verdict || 'Unknown';
-          const confidence = finalData.final_verdict?.confidence_score || 0;
+          // API returns riskCategory (not verdict) and underwritingScore (not confidence_score)
+          const verdict    = finalData.final_verdict?.riskCategory    || finalData.final_verdict?.verdict    || 'Unknown';
+          const confidence = parseConfidence(finalData.final_verdict?.underwritingScore ?? finalData.final_verdict?.confidence_score);
           setRows(prev => prev.map(r => r.id === row.id ? { 
             ...r, status: 'Completed', verdict, confidence, errorMsg: '', rawData: finalData, executionTime 
           } : r));
@@ -357,8 +385,8 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
               if (statusData.status === 'completed' && statusData.result) {
                 console.info("[Polling] Stopped because run completed");
                 const finalData = statusData.result;
-                const verdict = finalData.final_verdict?.verdict || 'Unknown';
-                const confidence = finalData.final_verdict?.confidence_score || 0;
+                const verdict    = finalData.final_verdict?.riskCategory    || finalData.final_verdict?.verdict    || 'Unknown';
+                const confidence = parseConfidence(finalData.final_verdict?.underwritingScore ?? finalData.final_verdict?.confidence_score);
                 setRows(prev => prev.map(r => r.id === row.id ? { 
                   ...r, status: 'Completed', verdict, confidence, errorMsg: '', rawData: finalData, executionTime 
                 } : r));
@@ -669,6 +697,7 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
                   </tbody>
                 </table>
               </div>
+              {isFinished && <PortfolioDashboard rows={rows} />}
             </div>
           )}
         </div>
