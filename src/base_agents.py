@@ -187,8 +187,24 @@ class BaseAgent:
             )
 
         
+        import time
+        import re
+        company_name_match = re.search(r"Company Name:\s*(.*?)\n", prompt)
+        company_name = company_name_match.group(1).strip() if company_name_match else "Unknown"
+        
+        prompt_chars = len(prompt)
+        est_prompt_tokens = int(prompt_chars / 4)
+        
+        t0 = time.time()
+        ts_before = time.strftime('%Y-%m-%d %H:%M:%S')
+        logger.info(f"[{agent_name}] [DIAGNOSTIC] START invoke() | Company: {company_name} | Time: {ts_before} | Prompt Chars: {prompt_chars} | Est. Prompt Tokens: {est_prompt_tokens}")
+        
         try:
             res = llm.invoke(prompt)
+            t1 = time.time()
+            ts_after = time.strftime('%Y-%m-%d %H:%M:%S')
+            elapsed = t1 - t0
+            
             prompt_tokens = 0
             completion_tokens = 0
             
@@ -200,6 +216,8 @@ class BaseAgent:
                     completion_tokens = token_usage.get('completion_tokens', 0)
                     if self.tracker:
                         self.tracker.add_usage(prompt_tokens, completion_tokens)
+            
+            logger.info(f"[{agent_name}] [DIAGNOSTIC] END invoke() | Company: {company_name} | Time: {ts_after} | Elapsed: {elapsed:.2f}s | Prompt Tokens: {prompt_tokens} | Response Tokens: {completion_tokens}")
             
             # Calculate cost estimate based on model type
             if azure_key or openai_key:
@@ -220,12 +238,14 @@ class BaseAgent:
             
             # Log usage & outputs
             logger.info(f"[{agent_name}] LLM Response received. Usage: input={prompt_tokens}, output={completion_tokens}, reasoning=0, cached=0, tool_calls=0, cost=${cost:.6f}")
-            logger.info(f"[{agent_name}] Output text:\n{str(res.content)}")
+            logger.debug(f"[{agent_name}] Output text:\n{str(res.content)}")
             
             return str(res.content)
         except Exception as e:
+            t_fail = time.time()
+            elapsed_fail = t_fail - t0
             import traceback
-            logger.error(f"[{agent_name}] LLM invocation failed: {e}\nTraceback:\n{traceback.format_exc()}")
+            logger.error(f"[{agent_name}] [DIAGNOSTIC] FAILED invoke() | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {type(e).__name__} - {e}\nTraceback:\n{traceback.format_exc()}")
             raise RuntimeError(f"Error calling live model: {e}")
 
     def parse_json(self, text: str) -> Dict[str, Any]:
