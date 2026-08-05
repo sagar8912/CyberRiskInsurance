@@ -1296,9 +1296,9 @@ class UnderwriterAgent(BaseUnderwriterAgent):
 
         underwriter_logger.info("START Verdict Generation")
         avg_score = sum(numeric_scores) / len(numeric_scores) if numeric_scores else 4.0
-        if avg_score < 2.0: risk_category = "Very Favourable"
-        elif avg_score < 3.0: risk_category = "Favourable"
-        elif avg_score < 4.0: risk_category = "Partially Favourable"
+        if avg_score < 1.5: risk_category = "Very Favourable"
+        elif avg_score < 2.5: risk_category = "Favourable"
+        elif avg_score < 3.5: risk_category = "Partially Favourable"
         elif avg_score < 4.5: risk_category = "Average"
         elif avg_score < 5.5: risk_category = "Partially Unfavourable"
         else: risk_category = "Unfavourable"

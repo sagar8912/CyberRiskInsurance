@@ -211,12 +211,12 @@ async def main_async():
     print("")
     
     # Step 2: Risk Category Evaluation
-    if avg_score < 2.0: range_str = "Very Favourable range of 1.0 to 2.0"
-    elif avg_score < 3.0: range_str = "Favourable range of 2.0 to 3.0"
-    elif avg_score < 4.0: range_str = "Partially Favourable range of 3.0 to 4.0"
-    elif avg_score < 4.5: range_str = "Average range of 4.0 to 4.5"
+    if avg_score < 1.5: range_str = "Very Favourable range of < 1.5"
+    elif avg_score < 2.5: range_str = "Favourable range of 1.5 to 2.5"
+    elif avg_score < 3.5: range_str = "Partially Favourable range of 2.5 to 3.5"
+    elif avg_score < 4.5: range_str = "Average range of 3.5 to 4.5"
     elif avg_score < 5.5: range_str = "Partially Unfavourable range of 4.5 to 5.5"
-    else: range_str = "Unfavourable range of 5.5 to 6.0"
+    else: range_str = "Unfavourable range of > 5.5"
     
     print("2. Risk Category Evaluation (13 Modifiers):")
     print(f"   - Math:    Sum of scores ({sum_scores:.1f}) / 13 Modifiers = {avg_score:.3f} Average")

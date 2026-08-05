@@ -46,6 +46,59 @@ function normaliseVerdict(verdict = '') {
   return 'Unknown';
 }
 
+
+function getModifierRisk(mod) {
+  if (!mod) return { position: 50, label: 'Unknown', markerColor: '#EAB308' };
+
+  const rating = mod.rating || mod.modifier_value || 'Unknown';
+  const upRating = String(rating).trim().toUpperCase();
+
+  let position = 50;
+  let label = 'Average';
+
+  if (upRating.includes('HIGHLY UNFAVOUR') || upRating.includes('HIGHLY UNFAVOR')) {
+    position = 98;
+    label = 'Highly Unfavorable';
+  } else if ((upRating.includes('PARTIAL') || upRating.includes('PARTIALLY')) && (upRating.includes('UNFAVOUR') || upRating.includes('UNFAVOR'))) {
+    position = 70;
+    label = 'Partially Unfavorable';
+  } else if (upRating.includes('UNFAVOUR') || upRating.includes('UNFAVOR')) {
+    position = 90;
+    label = 'Unfavorable';
+  } else if ((upRating.includes('PARTIAL') || upRating.includes('PARTIALLY')) && (upRating.includes('FAVOUR') || upRating.includes('FAVOR'))) {
+    position = 40;
+    label = 'Partially Favorable';
+  } else if (upRating.includes('HIGHLY FAVOUR') || upRating.includes('HIGHLY FAVOR') || upRating.includes('VERY FAVOUR') || upRating.includes('VERY FAVOR')) {
+    position = 10;
+    label = 'Highly Favorable';
+  } else if (upRating.includes('FAVOUR') || upRating.includes('FAVOR')) {
+    position = 25;
+    label = 'Favorable';
+  } else if (upRating.includes('AVERAGE')) {
+    position = 50;
+    label = 'Average';
+  }
+
+  // Priority override: visualizationScore -> normalizedScore
+  if (mod.visualizationScore !== undefined && mod.visualizationScore !== null && !isNaN(Number(mod.visualizationScore))) {
+    position = Number(mod.visualizationScore);
+  } else if (mod.normalizedScore !== undefined && mod.normalizedScore !== null && !isNaN(Number(mod.normalizedScore))) {
+    position = Number(mod.normalizedScore);
+  }
+  
+  const clampedPosition = Math.max(0, Math.min(100, position));
+  
+  let markerColor = '#EAB308';
+  if (clampedPosition <= 15) markerColor = '#16A34A';
+  else if (clampedPosition <= 35) markerColor = '#22C55E';
+  else if (clampedPosition <= 45) markerColor = '#84CC16';
+  else if (clampedPosition <= 60) markerColor = '#EAB308';
+  else if (clampedPosition <= 80) markerColor = '#F97316';
+  else markerColor = '#DC2626';
+
+  return { position: clampedPosition, label, markerColor };
+}
+
 const VERDICT_CONFIG = {
   'Favorable':             { color: '#16A34A', bg: '#F0FDF4', icon: ShieldCheck,  order: 0 },
   'Partially Favorable':   { color: '#65A30D', bg: '#F7FEE7', icon: Shield,       order: 1 },
@@ -150,9 +203,9 @@ function PieTooltip({ active, payload }) {
 
 function ModifierHeatRow({ mod, index }) {
   const [expanded, setExpanded] = useState(false);
+  const [hoverMarker, setHoverMarker] = useState(false);
 
   const rating  = mod.rating || mod.modifier_value || 'Unknown';
-  const { color, bg } = resolveRatingStyle(rating);
   const ratObj  = (typeof mod.rationale === 'object' && mod.rationale !== null) ? mod.rationale : null;
 
   const summary         = ratObj?.decision_summary || ratObj?.reason || (typeof mod.rationale === 'string' ? mod.rationale : null) || mod.summary || null;
@@ -162,87 +215,144 @@ function ModifierHeatRow({ mod, index }) {
   const businessImpact  = ratObj?.business_impact || null;
   const conclusion      = ratObj?.conclusion || mod.conclusion || null;
   const sources         = mod.sources || mod.evidence_sources || [];
-  const hasDetail       = summary || positiveFactors.length > 0 || riskFactors.length > 0 || ruleConditions || businessImpact || sources.length > 0;
+
+  const evidenceCount = positiveFactors.length + riskFactors.length;
+  const hasDetail = summary || evidenceCount > 0 || ruleConditions || businessImpact || sources.length > 0 || mod.score != null;
+
+  const { position: clampedPosition, label, markerColor } = getModifierRisk(mod);
+
+  const heatGradient = 'linear-gradient(to right, #16A34A, #84CC16, #EAB308, #F97316, #DC2626)';
 
   return (
-    <div style={{ borderBottom: '1px solid #F8FAFC' }}>
-      <button
+    <div style={{ borderBottom: '1px solid #F1F5F9', padding: '16px 20px', background: expanded ? '#FAFBFC' : '#FFFFFF', transition: 'background 0.2s ease' }}>
+      <div 
         onClick={() => hasDetail && setExpanded(v => !v)}
-        style={{
-          width: '100%', display: 'grid',
-          gridTemplateColumns: '26px 1fr auto auto auto',
-          alignItems: 'center', gap: '10px',
-          padding: '11px 16px', background: 'transparent', border: 'none',
-          cursor: hasDetail ? 'pointer' : 'default',
-          borderLeft: `4px solid ${color}`,
-          transition: 'background 0.12s', textAlign: 'left',
-        }}
-        onMouseEnter={e => { if (hasDetail) e.currentTarget.style.background = '#F8FAFC'; }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+        style={{ cursor: hasDetail ? 'pointer' : 'default' }}
       >
-        <span style={{ fontSize: '0.7rem', color: '#CBD5E1', fontFamily: 'monospace', fontWeight: '700' }}>
-          {String(index + 1).padStart(2, '0')}
-        </span>
-        <span style={{ fontWeight: '600', color: '#1E293B', fontSize: '0.865rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {mod.name || mod.modifier_name || 'Unknown Modifier'}
-        </span>
-        {(mod.score !== undefined && mod.score !== null) && (
-          <span style={{ fontSize: '0.7rem', fontWeight: '700', fontFamily: 'monospace', background: 'rgba(242,106,33,0.08)', color: '#EA580C', border: '1px solid rgba(242,106,33,0.2)', padding: '2px 7px', borderRadius: '4px', flexShrink: 0 }}>
-            {mod.score}
-          </span>
-        )}
-        <span style={{ background: bg, color, border: `1px solid ${color}30`, padding: '3px 9px', borderRadius: '20px', fontSize: '0.68rem', fontWeight: '700', flexShrink: 0 }}>
-          {rating}
-        </span>
-        {hasDetail
-          ? (expanded ? <ChevronUp size={13} color="#94A3B8" /> : <ChevronDown size={13} color="#94A3B8" />)
-          : <span style={{ width: 13 }} />
-        }
-      </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ 
+              width: '28px', height: '28px', borderRadius: '6px', background: '#F1F5F9', 
+              color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+              fontSize: '0.75rem', fontWeight: '700', fontFamily: 'monospace'
+            }}>
+              {String(index + 1).padStart(2, '0')}
+            </div>
+            <div>
+              <div style={{ fontWeight: '700', color: '#0F172A', fontSize: '0.95rem' }}>
+                {mod.name || mod.modifier_name || 'Unknown Modifier'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748B', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontWeight: '700', color: markerColor }}>{label}</span>
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: '4px' }}>
+            {hasDetail ? (expanded ? <ChevronUp size={18} color="#94A3B8" /> : <ChevronDown size={18} color="#94A3B8" />) : null}
+          </div>
+        </div>
+        
+        {/* Continuous Risk Scale */}
+        <div style={{ position: 'relative', width: '100%', padding: '0 8px', boxSizing: 'border-box' }}>
+          <div style={{ height: '8px', background: heatGradient, borderRadius: '4px', width: '100%' }} />
+          
+          {/* Marker */}
+          <div
+            onMouseEnter={(e) => { e.stopPropagation(); setHoverMarker(true); }}
+            onMouseLeave={(e) => { e.stopPropagation(); setHoverMarker(false); }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: `calc(${clampedPosition}% - 8px)`,
+              transform: 'translateY(-50%)',
+              width: '16px',
+              height: '16px',
+              background: '#FFFFFF',
+              border: `3px solid ${markerColor}`,
+              borderRadius: '50%',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+              transition: 'left 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s',
+              cursor: 'pointer',
+              zIndex: 20
+            }}
+          >
+            {/* Hover Tooltip */}
+            <div style={{
+              position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+              marginBottom: '10px', background: '#0F172A', color: '#FFF', padding: '10px 14px',
+              borderRadius: '8px', fontSize: '0.75rem', whiteSpace: 'nowrap',
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)', zIndex: 50,
+              opacity: hoverMarker ? 1 : 0, visibility: hoverMarker ? 'visible' : 'hidden',
+              transition: 'all 0.2s', pointerEvents: 'none'
+            }}>
+              <div style={{ fontWeight: '800', marginBottom: '6px', color: markerColor }}>{label}</div>
+              {mod.score != null && <div style={{ color: '#94A3B8', marginBottom: '2px' }}>Raw Score: <span style={{ color: '#F8FAFC', fontWeight: '600' }}>{mod.score}</span></div>}
+              <div style={{ color: '#94A3B8', marginBottom: '2px' }}>Normalized: <span style={{ color: '#F8FAFC', fontWeight: '600' }}>{clampedPosition.toFixed(0)}%</span></div>
+              <div style={{ color: '#94A3B8', marginBottom: '2px' }}>Confidence: <span style={{ color: '#F8FAFC', fontWeight: '600' }}>{mod.score != null ? 'High' : 'Standard'}</span></div>
+              <div style={{ color: '#94A3B8' }}>Evidence Count: <span style={{ color: '#F8FAFC', fontWeight: '600' }}>{evidenceCount}</span></div>
+              
+              <div style={{
+                position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+                borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+                borderTop: '5px solid #0F172A'
+              }} />
+            </div>
+          </div>
+        </div>
+        
+        {/* Scale Labels */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', color: '#94A3B8', fontWeight: '600', marginTop: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          <span>Highly Favorable</span>
+          <span>Average</span>
+          <span>Unfavorable</span>
+        </div>
+      </div>
 
       {expanded && hasDetail && (
-        <div style={{ borderLeft: `4px solid ${color}`, background: '#FAFBFC', padding: '14px 18px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-          {mod.score != null && (
-            <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '3px' }}>Confidence</div>
-              <div style={{ fontSize: '0.82rem', color: '#0F172A', fontWeight: '600' }}>{mod.score} / 1.00</div>
-            </div>
-          )}
-
+        <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px dashed #E2E8F0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
           {summary && (
             <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '5px' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '6px' }}>
                 Reason for Rating
               </div>
-              <p style={{ margin: 0, fontSize: '0.82rem', color: '#475569', lineHeight: 1.65 }}>
+              <p style={{ margin: 0, fontSize: '0.85rem', color: '#334155', lineHeight: 1.6 }}>
                 {typeof summary === 'string' ? summary : JSON.stringify(summary)}
               </p>
             </div>
           )}
 
-          {Array.isArray(positiveFactors) && positiveFactors.length > 0 && (
-            <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#16A34A', letterSpacing: '0.05em', marginBottom: '5px' }}>✓ Favorable Evidence</div>
-              <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                {positiveFactors.map((f, i) => <li key={i} style={{ fontSize: '0.81rem', color: '#166534' }}>{f}</li>)}
-              </ul>
-            </div>
-          )}
+          {(positiveFactors?.length > 0 || riskFactors?.length > 0) && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              {Array.isArray(positiveFactors) && positiveFactors.length > 0 && (
+                <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: '700', color: '#16A34A', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <CheckCircle size={14} /> Evidence: Strengths
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {positiveFactors.map((f, i) => <li key={i} style={{ fontSize: '0.82rem', color: '#14532D', lineHeight: 1.4 }}>{f}</li>)}
+                  </ul>
+                </div>
+              )}
 
-          {Array.isArray(riskFactors) && riskFactors.length > 0 && (
-            <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#DC2626', letterSpacing: '0.05em', marginBottom: '5px' }}>⚠ Unfavorable Evidence</div>
-              <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                {riskFactors.map((f, i) => <li key={i} style={{ fontSize: '0.81rem', color: '#991B1B' }}>{f}</li>)}
-              </ul>
+              {Array.isArray(riskFactors) && riskFactors.length > 0 && (
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: '700', color: '#DC2626', letterSpacing: '0.05em', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <AlertTriangle size={14} /> Evidence: Risk Factors
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {riskFactors.map((f, i) => <li key={i} style={{ fontSize: '0.82rem', color: '#7F1D1D', lineHeight: 1.4 }}>{f}</li>)}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
           {ruleConditions && (
             <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '5px' }}>Business Rule</div>
-              <div style={{ fontSize: '0.81rem', color: '#475569', background: '#F1F5F9', padding: '8px 10px', borderRadius: '6px', lineHeight: 1.55 }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '6px' }}>Business Rule</div>
+              <div style={{ fontSize: '0.82rem', color: '#475569', background: '#F8FAFC', padding: '10px 14px', borderRadius: '6px', border: '1px solid #E2E8F0', lineHeight: 1.5 }}>
                 {Array.isArray(ruleConditions) ? ruleConditions.join(' AND ') : ruleConditions}
               </div>
             </div>
@@ -250,32 +360,32 @@ function ModifierHeatRow({ mod, index }) {
 
           {businessImpact && (
             <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '5px' }}>Reasoning / Business Impact</div>
-              <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '6px' }}>Business Impact</div>
+              <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 {(Array.isArray(businessImpact) ? businessImpact : [businessImpact])
-                  .map((imp, i) => <li key={i} style={{ fontSize: '0.81rem', color: '#475569' }}>{imp}</li>)}
+                  .map((imp, i) => <li key={i} style={{ fontSize: '0.82rem', color: '#334155', lineHeight: 1.5 }}>{imp}</li>)}
               </ul>
             </div>
           )}
 
           {conclusion && (
-            <div style={{ fontSize: '0.81rem', color: '#0F172A', fontWeight: '600', borderTop: '1px solid #F1F5F9', paddingTop: '10px' }}>
-              Conclusion: <span style={{ fontWeight: '400', color: '#475569' }}>{conclusion}</span>
+            <div style={{ fontSize: '0.85rem', color: '#0F172A', fontWeight: '600', borderTop: '1px solid #F1F5F9', paddingTop: '12px' }}>
+              Conclusion: <span style={{ fontWeight: '400', color: '#334155' }}>{conclusion}</span>
             </div>
           )}
 
           {Array.isArray(sources) && sources.length > 0 && (
             <div>
-              <div style={{ fontSize: '0.67rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '5px' }}>
+              <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: '700', color: '#64748B', letterSpacing: '0.05em', marginBottom: '8px' }}>
                 Source References ({sources.length})
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {sources.slice(0, 5).map((src, i) => (
-                  <div key={i} style={{ fontSize: '0.77rem', color: '#3B82F6', background: '#EFF6FF', padding: '4px 10px', borderRadius: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div key={i} style={{ fontSize: '0.8rem', color: '#2563EB', background: '#EFF6FF', padding: '6px 12px', borderRadius: '6px', border: '1px solid #BFDBFE', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {typeof src === 'string' ? src : src.url || src.title || JSON.stringify(src)}
                   </div>
                 ))}
-                {sources.length > 5 && <div style={{ fontSize: '0.73rem', color: '#94A3B8' }}>+{sources.length - 5} more sources</div>}
+                {sources.length > 5 && <div style={{ fontSize: '0.75rem', color: '#94A3B8', fontWeight: '600' }}>+{sources.length - 5} more sources</div>}
               </div>
             </div>
           )}
@@ -284,6 +394,98 @@ function ModifierHeatRow({ mod, index }) {
     </div>
   );
 }
+
+
+// ─── Portfolio Heat Map ───────────────────────────────────────────────────────
+
+function PortfolioHeatMap({ companies, onSelectCompany, selectedCompanyId }) {
+  const [hoveredMod, setHoveredMod] = useState(null);
+
+  const allModifiers = useMemo(() => {
+    const mods = new Set();
+    companies.forEach(c => {
+      const mList = c.rawData?.modifiers || [];
+      mList.forEach(m => {
+        const name = m.name || m.modifier_name;
+        if (name) mods.add(name);
+      });
+    });
+    return Array.from(mods).sort();
+  }, [companies]);
+
+  if (companies.length === 0 || allModifiers.length === 0) return null;
+
+  return (
+    <Card style={{ marginTop: '20px', overflow: 'hidden' }}>
+      <CardHeader title="Portfolio Heat Map" subtitle="Modifier concentration across the filtered portfolio" />
+      <div style={{ overflowX: 'auto', padding: '0', paddingBottom: '8px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid #E2E8F0', color: '#64748B', fontWeight: '700', position: 'sticky', left: 0, background: '#FFF', zIndex: 10, minWidth: '180px' }}>Company</th>
+              {allModifiers.map(mod => (
+                <th key={mod}
+                    onMouseEnter={() => setHoveredMod(mod)}
+                    onMouseLeave={() => setHoveredMod(null)}
+                    style={{ 
+                      padding: '8px', borderBottom: '2px solid #E2E8F0', 
+                      writingMode: 'vertical-rl', transform: 'rotate(180deg)',
+                      textAlign: 'left', color: hoveredMod === mod ? '#0F172A' : '#94A3B8',
+                      transition: 'background 0.2s, color 0.2s', cursor: 'default', height: '160px',
+                      background: hoveredMod === mod ? '#F8FAFC' : 'transparent'
+                    }}>
+                  {mod}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {companies.map(c => {
+              const mList = c.rawData?.modifiers || [];
+              const isActive = selectedCompanyId === c.id;
+              return (
+                <tr key={c.id} 
+                    onClick={() => onSelectCompany(c.id)}
+                    style={{ 
+                      cursor: 'pointer',
+                      background: isActive ? '#F0F9FF' : 'transparent',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = '#FAFBFC'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}>
+                  <td style={{ padding: '12px 16px', borderBottom: '1px solid #F1F5F9', fontWeight: '700', color: isActive ? '#0284C7' : '#334155', position: 'sticky', left: 0, background: isActive ? '#F0F9FF' : '#FFF', transition: 'background 0.2s, color 0.2s' }}>
+                    {c.company}
+                  </td>
+                  {allModifiers.map(modName => {
+                    const mod = mList.find(m => (m.name || m.modifier_name) === modName);
+                    let cellBg = '#F1F5F9';
+                    let tooltip = 'No data';
+                    if (mod) {
+                       const rating = mod.rating || mod.modifier_value || '';
+                       const { markerColor, label } = getModifierRisk(mod);
+                       cellBg = markerColor;
+                       tooltip = `${label} - ${modName}`;
+                    }
+                    return (
+                      <td key={modName}
+                          title={tooltip}
+                          onMouseEnter={() => setHoveredMod(modName)}
+                          onMouseLeave={() => setHoveredMod(null)}
+                          style={{ padding: '4px', borderBottom: '1px solid #F1F5F9', textAlign: 'center', background: hoveredMod === modName ? '#F8FAFC' : 'transparent', transition: 'background 0.2s' }}>
+                        <div style={{ width: '100%', minWidth: '24px', height: '24px', background: cellBg, borderRadius: '4px', opacity: mod ? 1 : 0.15, transition: 'all 0.2s', margin: '0 auto' }} />
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
@@ -454,8 +656,10 @@ export default function PortfolioDashboard({ rows }) {
       )}
 
       {totalCompanies === 0 ? (
-        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '24px', textAlign: 'center', color: '#DC2626', fontSize: '0.9rem', fontWeight: '600', marginBottom: '24px' }}>
-          All batch rows failed. No portfolio data to display.
+        <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '10px', padding: '36px 24px', textAlign: 'center', color: '#475569', marginBottom: '24px', transition: 'all 0.3s' }}>
+          <Database size={32} color="#94A3B8" style={{ margin: '0 auto 12px' }} />
+          <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#0F172A', marginBottom: '6px' }}>No Risk Intelligence Available</div>
+          <div style={{ fontSize: '0.85rem' }}>No companies have successfully completed the automated underwriting extraction process.</div>
         </div>
       ) : (
         <>
@@ -616,12 +820,16 @@ export default function PortfolioDashboard({ rows }) {
 
               <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
                 {displayList.length === 0 && (
-                  <div style={{ padding: '24px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
+                  <div style={{ padding: '32px 24px', textAlign: 'center', color: '#64748B', transition: 'all 0.3s' }}>
+                    <Search size={24} color="#CBD5E1" style={{ margin: '0 auto 8px' }} />
+                    <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1E293B', marginBottom: '4px' }}>No Matches Found</div>
+                    <div style={{ fontSize: '0.78rem' }}>
                     {searchQuery 
-                      ? "No companies match your search criteria." 
+                      ? "Try adjusting your search criteria." 
                       : selectedCategory 
-                        ? `No ${selectedCategory.toLowerCase()} companies found in this portfolio.` 
-                        : "No companies available."}
+                        ? `No companies are currently classified as ${selectedCategory}.` 
+                        : "No companies available to display."}
+                    </div>
                   </div>
                 )}
                 {displayList.map(company => {
@@ -706,7 +914,7 @@ export default function PortfolioDashboard({ rows }) {
             const isHighRisk = normaliseVerdict(selectedCompany.verdict) === 'Unfavorable' || normaliseVerdict(selectedCompany.verdict) === 'Partially Unfavorable';
 
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: '14px', marginBottom: '16px', alignItems: 'start' }}>
+              <div id="company-details-section" style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: '14px', marginBottom: '16px', alignItems: 'start', transition: 'all 0.3s ease' }}>
 
                 {/* Company Details */}
                 <Card>
@@ -816,8 +1024,10 @@ export default function PortfolioDashboard({ rows }) {
                     subtitle={modifiers.length > 0 ? `${modifiers.length} modifiers · click to expand evidence & reasoning` : undefined}
                   />
                   {modifiers.length === 0 ? (
-                    <div style={{ padding: '28px', textAlign: 'center', color: '#94A3B8', fontSize: '0.84rem' }}>
-                      Modifier data unavailable. Ensure the extraction agent completed successfully.
+                    <div style={{ padding: '36px 24px', textAlign: 'center', color: '#64748B', transition: 'all 0.3s' }}>
+                      <Activity size={24} color="#CBD5E1" style={{ margin: '0 auto 8px' }} />
+                      <div style={{ fontSize: '0.9rem', fontWeight: '600', color: '#1E293B', marginBottom: '4px' }}>No Risk Modifiers Identified</div>
+                      <div style={{ fontSize: '0.8rem' }}>Actuarial extraction did not identify any distinct modifiers for this profile.</div>
                     </div>
                   ) : (
                     <div>
@@ -933,7 +1143,17 @@ export default function PortfolioDashboard({ rows }) {
               </div>
 
             </div>
-          </Card>
+                    </Card>
+
+          {/* ── 7. Portfolio Heat Map ────────────────────────────────────────── */}
+          <PortfolioHeatMap 
+            companies={displayList} 
+            selectedCompanyId={selectedCompanyId} 
+            onSelectCompany={(id) => {
+              setSelectedCompanyId(id);
+              document.querySelector('#company-details-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} 
+          />
         </>
       )}
     </div>
