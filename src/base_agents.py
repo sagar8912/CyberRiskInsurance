@@ -147,7 +147,9 @@ class BaseAgent:
                     api_key=azure_key,
                     api_version=env_api_version,
                     azure_deployment=env_deployment_name,
-                    temperature=temperature
+                    temperature=temperature,
+                    timeout=45.0,
+                    max_retries=1
                 )
             except ImportError:
                 llm = SimpleChatOpenAI(
@@ -165,7 +167,9 @@ class BaseAgent:
                 llm = ChatOpenAI(
                     model=model_name,
                     api_key=openai_key,
-                    temperature=temperature
+                    temperature=temperature,
+                    timeout=45.0,
+                    max_retries=1
                 )
             except ImportError:
                 llm = SimpleChatOpenAI(
@@ -179,7 +183,9 @@ class BaseAgent:
             llm = ChatGroq(
                 model=model_name,
                 api_key=groq_key,
-                temperature=temperature
+                temperature=temperature,
+                timeout=45.0,
+                max_retries=1
             )
         else:
             raise ValueError(
@@ -245,8 +251,14 @@ class BaseAgent:
             t_fail = time.time()
             elapsed_fail = t_fail - t0
             import traceback
-            logger.error(f"[{agent_name}] [DIAGNOSTIC] FAILED invoke() | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {type(e).__name__} - {e}\nTraceback:\n{traceback.format_exc()}")
-            raise RuntimeError(f"Error calling live model: {e}")
+            error_type = type(e).__name__
+            
+            if "Timeout" in error_type or "timeout" in str(e).lower():
+                logger.error(f"[{agent_name}] [DIAGNOSTIC] TIMEOUT invoke() | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {error_type} - {e}")
+                raise TimeoutError(f"LLM request timed out after {elapsed_fail:.1f}s. This is usually caused by Azure OpenAI rate limits or network issues.")
+            else:
+                logger.error(f"[{agent_name}] [DIAGNOSTIC] FAILED invoke() | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {error_type} - {e}\nTraceback:\n{traceback.format_exc()}")
+                raise RuntimeError(f"Error calling live model: {e}")
 
     def parse_json(self, text: str) -> Dict[str, Any]:
         logger = self.get_logger()
