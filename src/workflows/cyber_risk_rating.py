@@ -306,23 +306,51 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
 
     def with_step(fn, step: int, node_name: str, is_underwriter: bool = False):
         async def wrapped(state: CyberRiskRatingState) -> dict:
+            import time
+            import asyncio
+            wf_log = get_agent_logger("workflow")
+            t0 = time.time()
+            wf_log.info(f"[NODE START] {node_name} (step={step})")
             _update_step(state, step, node_name)
-            res = await fn(state)
-            if not is_underwriter:
-                _update_step(state, step, node_name)
-            else:
+            
+            try:
+                # Wrap the node execution in a 60-second timeout
+                res = await asyncio.wait_for(fn(state), timeout=60.0)
+                
+                elapsed = time.time() - t0
+                wf_log.info(f"[NODE END] {node_name} (elapsed {elapsed:.2f}s)")
+                
+                if not is_underwriter:
+                    _update_step(state, step, node_name)
+                else:
+                    run_id = state.get("run_id")
+                    if run_id:
+                        try:
+                            from src.api import format_analysis_response
+                            from src.utils.run_status import run_status_cache
+                            merged_final = {**state, **res}
+                            formatted = format_analysis_response(merged_final, state.get("company_name", ""), state.get("domain", ""))
+                            run_status_cache.complete_run(run_id, 7, formatted)
+                        except Exception as e:
+                            wf_log = get_agent_logger("workflow")
+                            wf_log.error(f"Error completing run status cache in underwriter_node: {e}")
+                return res
+            except asyncio.TimeoutError:
+                elapsed = time.time() - t0
+                wf_log.error(f"[NODE FAILED] {node_name} (TIMEOUT after {elapsed:.2f}s)")
                 run_id = state.get("run_id")
                 if run_id:
                     try:
-                        from src.api import format_analysis_response
                         from src.utils.run_status import run_status_cache
-                        merged_final = {**state, **res}
-                        formatted = format_analysis_response(merged_final, state.get("company_name", ""), state.get("domain", ""))
-                        run_status_cache.complete_run(run_id, 7, formatted)
-                    except Exception as e:
-                        wf_log = get_agent_logger("workflow")
-                        wf_log.error(f"Error completing run status cache in underwriter_node: {e}")
-            return res
+                        run_status_cache.fail_run(run_id, f"Node {node_name} timed out after 60s")
+                    except Exception:
+                        pass
+                raise TimeoutError(f"Node {node_name} timed out after 60s")
+            except Exception as e:
+                elapsed = time.time() - t0
+                wf_log.error(f"[NODE FAILED] {node_name} (EXCEPTION: {type(e).__name__} - {e}) (elapsed {elapsed:.2f}s)")
+                raise
+                
         return wrapped
 
     # 2. Build graph structure

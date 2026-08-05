@@ -341,13 +341,25 @@ async def analyze_company_stream(req: AnalysisRequest):
         queue = asyncio.Queue()
 
         async def run_graph_stream():
+            api_logger.info(f"[ASYNC TASK START] run_graph_stream for {company_name}")
+            t_task = time.time()
             nonlocal final_state
             try:
                 async for event in graph.astream_events(initial_state, version="v2"):
+                    t_put_start = time.time()
                     await queue.put({"kind": "event", "data": event})
+                    t_put_end = time.time()
+                    if (t_put_end - t_put_start) > 0.1:
+                        api_logger.warning(f"[QUEUE PUT] Slow put for event {event.get('event')}: {t_put_end - t_put_start:.3f}s")
+            except asyncio.TimeoutError as e:
+                api_logger.error(f"[ASYNC TASK TIMEOUT] run_graph_stream timed out for {company_name}: {e}")
+                await queue.put({"kind": "error", "error": e})
             except Exception as e:
+                api_logger.error(f"[ASYNC TASK FAILED] run_graph_stream failed for {company_name}: {type(e).__name__} - {e}")
                 await queue.put({"kind": "error", "error": e})
             finally:
+                elapsed_task = time.time() - t_task
+                api_logger.info(f"[ASYNC TASK END] run_graph_stream for {company_name} (elapsed {elapsed_task:.2f}s)")
                 await queue.put(None)
 
         stream_task = asyncio.create_task(run_graph_stream())
@@ -434,9 +446,14 @@ async def analyze_company_stream(req: AnalysisRequest):
                 yield f"data: {json.dumps({'type': 'error', 'message': 'Graph execution completed without final state.'})}\n\n"
                 
         except Exception as e:
-            run_status_cache.fail_run(run_id, str(e))
-            api_logger.error(f"Streaming event exception: {str(e)}")
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Graph execution failed: {str(e)}'})}\n\n"
+            error_msg = str(e) or type(e).__name__
+            run_status_cache.fail_run(run_id, f"Error: {error_msg}")
+            api_logger.error(f"Streaming event exception: {type(e).__name__} - {error_msg}")
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Graph execution failed: {error_msg}'})}\n\n"
+        except asyncio.TimeoutError as e:
+            run_status_cache.fail_run(run_id, "TimeoutError: Graph execution timed out")
+            api_logger.error(f"Streaming event exception: TimeoutError")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Graph execution failed: TimeoutError'})}\n\n"
         finally:
             api_logger.info(f"[{time.time():.3f}] [SSE STREAM CLOSED] Streaming connection closed for {company_name}")
 
