@@ -269,7 +269,8 @@ export default function AgentWorkflow({ isLoading, hasRun, currentStep = 0, coll
     // Post-Collection Processing Pipeline
     { id: '8', position: { x: 740, y: 680 }, type: 'agent', data: { label: 'Coordinator Agent', description: 'Merges raw evidence into normalized profile', icon: <Link size={24} />, ...getStatus(4, '#3B82F6', 'Reconciling conflicts...', 'Entity profile normalized.') } },
     { id: '9', position: { x: 740, y: 840 }, type: 'agent', data: { label: 'Fact Checker Agent', description: 'Verifies claims against evidence.', icon: <CheckSquare size={24} />, ...getStatus(5, '#3B82F6', 'Cross-referencing claims...', '4 verified, 1 unsupported') } },
-    { id: '10', position: { x: 740, y: 1000 }, type: 'agent', data: { label: 'Underwriter Agent', description: 'Applies actuarial models', icon: <Scale size={24} />, ...getStatus(6, '#3B82F6', 'Calculating risk scores...', '14 modifiers applied') } },
+    { id: '10', position: { x: 740, y: 1000 }, type: 'agent', data: { label: 'Underwriter Agent', description: 'Applies actuarial models', icon: <Scale size={24} />, ...getStatus(6, '#3B82F6', 'Calculating risk scores...', '15 modifiers applied') } },
+
     { id: '11', position: { x: 740, y: 1160 }, type: 'agent', data: { label: 'Final Verdict', description: 'Generates final risk output', icon: <BarChart size={24} />, ...getStatus(7, '#10B981', 'Generating...', 'Verdict complete') } },
   ];
 

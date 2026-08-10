@@ -5,8 +5,9 @@ import * as XLSX from 'xlsx';
 import AgentResultCards from './AgentResultCards';
 import ReconciledProfile from './ReconciledProfile';
 import ModifierTable from './ModifierTable';
-import VerdictCard from './VerdictCard';
 import { downloadReportHtml, printReportPdf } from './EvidenceReportGenerator';
+import PortfolioDashboard from './PortfolioDashboard';
+
 
 // Constants for alias matching
 const COMPANY_ALIASES = ['company_name', 'company', 'companyname', 'name', 'insuredname', 'accountname', 'clientname', 'organization', 'entityname'];
@@ -669,9 +670,11 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
                   </tbody>
                 </table>
               </div>
+              <PortfolioDashboard rows={rows} />
             </div>
           )}
         </div>
+
 
         {/* Footer */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>

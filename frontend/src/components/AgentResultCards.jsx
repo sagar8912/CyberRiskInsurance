@@ -8,7 +8,8 @@ export default function AgentResultCards({ reconciledProfile, claims, modifiers,
   const totalClaims = claims ? claims.length : 0;
   
   const favMods = modifiers ? modifiers.filter(m => m.rating.includes('FAVOURABLE') && !m.rating.includes('UNFAVOURABLE')).length : 0;
-  const totalMods = modifiers ? modifiers.length : 14;
+  const totalMods = modifiers ? modifiers.length : 15;
+
 
   const agents = [
     {
