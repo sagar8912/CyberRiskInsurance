@@ -1,7 +1,29 @@
 import os
 import sys
+
+# Ensure project root is always on sys.path for direct python3 src/cli.py execution
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
 import asyncio
 import argparse
+
+# Automatically load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    load_dotenv(_env_path, override=True)
+except ImportError:
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if os.path.exists(env_file):
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip().strip('"').strip("'")
+
 from src.registry import BusinessRuleRegistry
 from src.workflows import build_cyber_risk_rating_graph
 from src.cache import get_cache_manager
@@ -21,6 +43,9 @@ async def main_async():
     parser.add_argument("--company", type=str, help="Company name to evaluate")
     parser.add_argument("--domain", type=str, help="Company domain (e.g. techgiant.com)")
     parser.add_argument("--report", action="store_true", help="Generate HTML underwriting audit report")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass local company cache and force fresh live collector harvesting")
+    parser.add_argument("--ground-truth", type=str, default=None, help="Name of ground truth company (e.g., microsoft, liberty_mutual, allstate) for comparison")
+    parser.add_argument("--ground-report", type=str, default=None, help="Path or name of ground truth report/company for comparison")
     
     args = parser.parse_args()
 
@@ -48,9 +73,10 @@ async def main_async():
     print(f"Rule Target:    {rule_id}")
     print(f"Company Target: {company_name}")
     print(f"Primary Domain: {domain}")
+    print(f"Cache Mode:     {'BYPASS (Live)' if args.no_cache else 'ENABLED'}")
 
     # Compile the LangGraph workflow
-    app = build_cyber_risk_rating_graph(enable_cache=True)
+    app = build_cyber_risk_rating_graph(enable_cache=not args.no_cache)
 
     # Initial State
     initial_state = {
@@ -218,8 +244,9 @@ async def main_async():
     elif avg_score < 5.5: range_str = "Partially Unfavourable range of 4.5 to 5.5"
     else: range_str = "Unfavourable range of 5.5 to 6.0"
     
-    print("2. Risk Category Evaluation (13 Modifiers):")
-    print(f"   - Math:    Sum of scores ({sum_scores:.1f}) / 13 Modifiers = {avg_score:.3f} Average")
+    mod_count = len(scores_list) if scores_list else 15
+    print(f"2. Risk Category Evaluation ({mod_count} Modifiers):")
+    print(f"   - Math:    Sum of scores ({sum_scores:.1f}) / {mod_count} Modifiers = {avg_score:.3f} Average")
     print(f"   - Verdict: {risk_cat} (Average falls in the {range_str})")
     print("")
     
@@ -268,8 +295,29 @@ async def main_async():
         print("\n> Saved raw collector evidence to cache database.")
 
     if args.report:
-        from reports.report_generator import generate_underwriting_audit_report
-        report_path = generate_underwriting_audit_report(final_state, company_name, domain, rule_id)
+        from reports.report_generator import generate_underwriting_audit_report, list_ground_truth_companies
+        
+        ground_truth_key = None
+        
+        target_gt = args.ground_truth or args.ground_report
+        if target_gt:
+            avail_keys = list_ground_truth_companies()
+            norm_input = target_gt.lower().replace(" ", "_").replace("-", "_")
+            matched_key = None
+            for key in avail_keys:
+                if key.lower() in norm_input or norm_input in key.lower():
+                    matched_key = key
+                    break
+                    
+            if matched_key:
+                ground_truth_key = matched_key
+            else:
+                print(f"\n[WARNING] Ground truth company '{target_gt}' did not match any stored companies {avail_keys}.")
+                
+        report_path = generate_underwriting_audit_report(
+            final_state, company_name, domain, rule_id, 
+            ground_truth_key=ground_truth_key
+        )
         print(f"\nAudit report generated: {report_path}")
 
 

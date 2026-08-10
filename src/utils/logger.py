@@ -26,7 +26,9 @@ MODIFIER_FOLDER_MAPPING = {
     "volatilityrecovery in sales": "volatility_recovery_in_sales",
     "applicability of privacy regulation": "applicability_privacy_regulation",
     "b2c end products": "b2c_end_products",
-    "years in business": "years_in_business"
+    "years in business": "years_in_business",
+    "cybersecurity info": "cybersecurity_info",
+    "industry & company breach history": "breach_history"
 }
 
 def slugify(text: str) -> str:

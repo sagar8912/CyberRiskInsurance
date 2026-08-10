@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+*.log
 
 # Local environments / Virtual Environments
 .venv/
@@ -21,12 +23,13 @@ data/changes/
 .DS_Store
 
 # Environment variables / secrets
-.env
-.env.company
+.env*
+!.env.template
 
 # Frontend dependencies and build output
 frontend/node_modules/
 frontend/dist/
+frontend/build/
 
 # Exclude run logs, stories, and generated audit reports
 logs/

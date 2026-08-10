@@ -8,6 +8,7 @@ export default function AgentResultCards({ reconciledProfile, claims, modifiers,
   const totalClaims = claims ? claims.length : 0;
   
   const favMods = modifiers ? modifiers.filter(m => m.rating.includes('FAVOURABLE') && !m.rating.includes('UNFAVOURABLE')).length : 0;
+  const totalMods = modifiers ? modifiers.length : 14;
 
   const agents = [
     {
@@ -80,8 +81,8 @@ export default function AgentResultCards({ reconciledProfile, claims, modifiers,
       icon: <Scale size={20} color="var(--accent-orange)" />,
       status: "Success",
       signal: "Actuarial Scoring",
-      finding: `Applied 13 modifier models yielding ${favMods} strengths.`,
-      evidenceCount: 13,
+      finding: `Applied ${totalMods} modifier models yielding ${favMods} strengths.`,
+      evidenceCount: totalMods,
       confidence: verdict.confidenceBand
     }
   ];

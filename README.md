@@ -7,7 +7,7 @@ A production-ready, configuration-driven multi-agent underwriting assessment sys
 ## 🚀 Key Features
 
 * **LangGraph Multi-Agent Workflows:** Orchestrates validation, parallel data collection, fact-checking, and risk evaluations under a unified graph structure.
-* **13 Mathematical Risk Modifiers:** Programmatic scoring rules evaluating Mergers & Acquisitions, Sensitive Information, Domain Encryption, Geographic Spread, Internet Footprint, Nature of Services, Organizational Complexity, Privacy Regulation, Seasonality of Sales, Volatility/Recovery, Privacy Applicability, B2C End Products, and **Years in Business**.
+* **15 Mathematical Risk Modifiers:** Programmatic scoring rules evaluating Mergers & Acquisitions, Sensitive Information, Domain Encryption, Geographic Spread, Internet Footprint, Nature of Services, Organizational Complexity, Privacy Regulation, Seasonality of Sales, Volatility/Recovery, Privacy Applicability, B2C End Products, Years in Business, Cybersecurity Info, and **Industry & Company Breach History**.
 * **Consensus Fact-Checking:** Analyzes fact consistency across sources (GLEIF/D&B, SEC EDGAR, Wikidata, Wikipedia, Domain HTTPS & HTML Scraper). Computes a rigorous **Accuracy Score** (achieving 90%+ consensus for fully scraped entities) and triggers human escalation only when consensus drops below $50\%$.
 * **Robust Caching System:** Saves collected evidence locally to eliminate redundant network requests and accelerate subsequent analyses.
 * **High-Speed Groq Integration:** Leverages Groq API's high throughput (`llama-3.3-70b-versatile`) for reliable unstructured extraction and consensus summary text generation.
@@ -143,5 +143,5 @@ Here is a comparison of how the **Excel sheet** (`data/cyber_rater_modifier_summ
 ```
 
 * **Excel Approach:** Modifiers directly adjust the financial cost (premium) of specific coverages (e.g. -5% to +5% adjustments). The final verdict is a multiplicative factor applied to the base premium.
-* **Python Code Approach:** Modifiers are mapped to qualitative rating categories (Very Favourable = 1.0, Average = 4.0, Unfavourable = 6.0). The average score across all 13 modifiers determines the final overall risk category.
+* **Python Code Approach:** Modifiers are mapped to qualitative rating categories (Very Favourable = 1.0, Average = 4.0, Unfavourable = 6.0). The average score across all 15 modifiers determines the final overall risk category.
 

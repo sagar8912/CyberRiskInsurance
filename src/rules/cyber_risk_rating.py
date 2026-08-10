@@ -32,6 +32,7 @@ Your output JSON must contain:
 - "country": string name of the primary headquarters country.
 - "founding_year": numerical year when the company was founded (e.g. 1912), or null if not found.
 - "industry_classification": list of strings covering primary industry AND all sub-industries mentioned (e.g. ["Insurance", "Property and Casualty", "Life Insurance", "Commercial Insurance"]).
+- "company_breaches": list of breach strings or incident descriptions mentioned in the text (e.g., ["2023 Ransomware Incident", "2021 Data Breach"]), or empty list.
 """,
     required_vars=["company_name", "domain", "wikipedia_text"]
 )
@@ -42,7 +43,7 @@ WIKIPEDIA = CollectorAgentConfig(
     prompt_template=WIKIPEDIA_PROMPT,
     target_fields=[
         "subsidiaries", "acquisitions", "customer_type", "has_ecommerce",
-        "country", "countries_of_operation", "founding_year", "industry_classification"
+        "country", "countries_of_operation", "founding_year", "industry_classification", "company_breaches"
     ],
     source_name="Wikipedia"
 )
@@ -112,6 +113,10 @@ Your output JSON must contain:
 - "quarterly_revenue": list of numerical quarterly revenues or empty list.
 - "sic_codes": list of strings (SIC codes for the company's industry, e.g. ["6311"] for life insurance, ["6331"] for fire/marine/casualty insurance).
 - "company_type": string describing company legal form (e.g. mutual holding company, stock corporation).
+- "sec_cyber_incidents": list of strings representing 8-K material cybersecurity incident disclosures.
+- "company_breaches": list of strings representing confirmed cyber breach incidents or ransomware disclosures.
+- "has_ciso_disclosure": boolean (whether a CISO, Chief Information Security Officer, or executive cybersecurity officer is disclosed in Item 1C / Item 10 / governance).
+- "cybersecurity_frameworks": list of strings (cybersecurity frameworks mentioned in Item 1C or Item 1, e.g. ISO 27001, SOC 2, NIST CSF, CIS Controls).
 """,
     required_vars=["company_name", "domain", "sec_text"]
 )
@@ -124,7 +129,8 @@ SEC = CollectorAgentConfig(
         "revenue", "fiscal_year", "business_segments", "geographic_revenue_or_regions",
         "subsidiaries_count", "subsidiaries_list", "acquisitions_mentions", "acquisitions",
         "risk_factor_keywords", "cybersecurity_mentions", "cloud_technology_mentions",
-        "customer_data_mentions", "filing_url", "quarterly_revenue", "sic_codes", "company_type"
+        "customer_data_mentions", "filing_url", "quarterly_revenue", "sic_codes", "company_type",
+        "sec_cyber_incidents", "company_breaches", "has_ciso_disclosure", "cybersecurity_frameworks"
     ],
     source_name="SECCollector"
 )
@@ -186,6 +192,11 @@ Your output JSON must contain:
 - "domain_creation_date": string (the domain creation date from RDAP/WHOIS, e.g. "2005-12-01", or null).
 - "domain_expiration_date": string (the domain expiration date from RDAP/WHOIS, e.g. "2026-12-01", or null).
 - "domain_registrar": string (the domain registrar name from RDAP/WHOIS, e.g. "GoDaddy", or null).
+- "has_dmarc_spf": boolean (whether DMARC and/or SPF email protection records are active in DNS context).
+- "has_security_headers": boolean (whether HTTP security headers like HSTS, X-Frame-Options, or CSP are active).
+- "has_security_txt": boolean (whether security.txt vulnerability disclosure file is present).
+- "has_ciso_disclosure": boolean (whether a CISO or Chief Information Security Officer is disclosed or mentioned).
+- "cybersecurity_frameworks": list of strings (e.g. ISO 27001, SOC 2, NIST CSF, FedRAMP).
 """,
     required_vars=["company_name", "domain", "scraper_text"]
 )
@@ -201,7 +212,8 @@ DOMAIN = CollectorAgentConfig(
         "ecommerce_evidence", "cloud_saas_indicators", "data_sensitive_indicators",
         "privacy_policy_url", "terms_url", "products_services_portfolio",
         "mozilla_observatory_grade", "tosdr_privacy_grade", "domain_creation_date",
-        "domain_expiration_date", "domain_registrar"
+        "domain_expiration_date", "domain_registrar", "has_dmarc_spf", "has_security_headers",
+        "has_security_txt", "has_ciso_disclosure", "cybersecurity_frameworks"
     ],
     source_name="DomainScraper"
 )
@@ -230,29 +242,6 @@ RESPONSES = CollectorAgentConfig(
 )
 
 
-OPENCORPORATES_PROMPT = PromptTemplate(
-    template="""You are an expert underwriter extraction agent.
-Analyze the following OpenCorporates company details for {company_name} ({domain}) and extract key registration attributes.
-OpenCorporates Context:
-{opencorporates_text}
-
-{format_instructions}
-Your output JSON must contain:
-- "incorporation_date": string registration date (YYYY-MM-DD), or null.
-- "jurisdiction_code": string jurisdiction code (e.g. us_de), or null.
-- "company_number": string registration number, or null.
-- "status": string registration status (e.g. Active, Dissolved), or null.
-""",
-    required_vars=["company_name", "domain", "opencorporates_text"]
-)
-
-OPENCORPORATES = CollectorAgentConfig(
-    name="OpenCorporates Collector",
-    agent_type="opencorporates",
-    prompt_template=OPENCORPORATES_PROMPT,
-    target_fields=["incorporation_date", "jurisdiction_code", "company_number", "status"],
-    source_name="OpenCorporates"
-)
 
 GDELT_PROMPT = PromptTemplate(
     template="""You are an expert underwriter extraction agent.
@@ -344,6 +333,17 @@ CENSUS_NAICS = CollectorAgentConfig(
     source_name="CensusNAICS"
 )
 
+CISAKEV = CollectorAgentConfig(
+    name="CISA KEV Collector",
+    agent_type="cisakev",
+    prompt_template=PromptTemplate(
+        template="CISA Known Exploited Vulnerabilities lookup for {company_name} ({domain}). No LLM needed.",
+        required_vars=["company_name", "domain"]
+    ),
+    target_fields=["cisa_kev_matches", "cisa_kev_count", "has_cisa_kev_vulnerabilities"],
+    source_name="CISAKEVCollector"
+)
+
 
 # Coordinator config
 COORD_PROMPT = PromptTemplate(
@@ -364,14 +364,26 @@ Output a single consolidated profile with the following fields:
 - "compliance_mentions": list of strings (e.g., ["GDPR", "CCPA"]).
 - "quarterly_revenue": list of numbers or empty list.
 - "sic_codes": list of strings (e.g., ["6331"] for insurance carriers, ["7372"] for prepackaged software, ["5311"] for department stores. If not explicitly found in collector findings, you must dynamically infer the most likely 4-digit SIC code based on the company's business activities or name, do not default to "7372" unless it is a software/tech company).
+- "sub_industries": list of predominant sub-industry strings.
+- "worst_sub_industry_appetite": "prohibited" or "restricted" or "acceptable" or "target".
 - "services_appetite": "low_risk" or "medium_risk" or "high_risk".
 - "internet_exposure_domains": number of domains.
 - "customer_base_scale": "SMB (<1k)" or "Mid-Market" or "Enterprise".
+- "estimated_customers_count": estimated total unique customers count (number).
 - "digital_exposure": number (1 to 5).
 - "disruption_speed": number (1 to 5).
 - "recovery_complexity": number (1 to 5).
 - "founding_year": numerical year or null.
 - "has_cyber_breach": boolean.
+- "cybersecurity_frameworks": list of strings (e.g., ["ISO 27001", "SOC 2 Type II"]).
+- "has_dmarc_spf": boolean.
+- "has_security_headers": boolean.
+- "has_security_txt": boolean.
+- "has_ciso_disclosure": boolean.
+- "company_breaches": list of breach strings or incident objects (e.g., ["2023 Ransomware Incident", "2021 Data Breach"]).
+- "industry_breach_tier": "Very Low" or "Low" or "Moderate" or "High" or "Very High".
+- "cisa_kev_matches": list of CISA Known Exploited Vulnerability objects.
+- "has_cisa_kev_vulnerabilities": boolean.
 """,
     required_vars=["company_name", "domain", "reports_json"]
 )
@@ -383,15 +395,17 @@ COORD = CoordinatorConfig(
     collector_fields=[
         "revenue", "subsidiaries", "acquisitions", "customer_type", "has_ecommerce",
         "domains", "countries_of_operation", "privacy_policy_published", "compliance_mentions",
-        "quarterly_revenue", "sic_codes", "services_appetite", "internet_exposure_domains",
-        "customer_base_scale", "founding_year", "has_cyber_breach",
+        "quarterly_revenue", "sic_codes", "sub_industries", "worst_sub_industry_appetite", "services_appetite", "internet_exposure_domains",
+        "customer_base_scale", "estimated_customers_count", "founding_year", "has_cyber_breach",
         "has_active_litigation", "ssl_grade", "ftc_actions_count",
-        "detected_technologies", "has_ecommerce", "naics_code", "naics_description"
+        "detected_technologies", "has_ecommerce", "naics_code", "naics_description",
+        "cybersecurity_frameworks", "has_dmarc_spf", "has_security_headers", "has_security_txt", "has_ciso_disclosure",
+        "company_breaches", "industry_breach_tier", "sec_cyber_incidents", "cisa_kev_matches", "has_cisa_kev_vulnerabilities"
     ],
     computed_fields=["usa_presence", "continent_spread"],
     report_sources=[
         "Wikipedia", "Wikidata", "SECCollector", "DBCollector", "DomainScraper",
-        "OpenCorporates", "GDELT", "CourtListener", "SSLLabs", "FTC", "Wappalyzer", "CensusNAICS"
+        "GDELT", "CourtListener", "SSLLabs", "FTC", "Wappalyzer", "CensusNAICS", "CISAKEVCollector"
     ]
 )
 
@@ -431,15 +445,17 @@ UNDERWRITING MODIFIER RULES:
 2. Amount of sensitive information: Customer Type (B2B vs B2C) + Ecommerce Presence.
 3. Domain Encryption: Ratio of https encrypted domains.
 4. Geographic Spread: Country count + continent count + USA presence vs revenue tier.
-5. Internet footprint: Domains count * Scale Multiplier (SMB=1, Mid-Market=2, Enterprise=3).
-6. Nature of services: Appetite category (low_risk=favourable, high_risk=unfavourable).
+5. Internet footprint: Unique Web Domains Count * Customer Scale Multiplier (10k=1.0, 10k-100k=1.5, 100k-1M=2.0, 1M-10M=2.5, 10M-100M=3.0, 100M-1B=3.5, 1B+=4.0) evaluated against revenue tier matrix.
+6. Nature of services: Unique Predominant Sub-Industries Count * Worst Appetite Multiplier (Prohibited x3, Restricted x2, Acceptable x1, Target x0.1) evaluated against revenue tier matrix.
 7. Organizational Complexity: Subsidiary count vs revenue tier.
 8. Privacy Regulation: Policy published + Compliance frameworks count.
 9. Seasonality of sales: CV of quarterly revenue (CV < 0.1 Favourable, > 0.25 Unfavourable) or SIC benchmark.
-10. Volatility/Recovery in Sales: Avg of digital exposure, disruption speed, recovery complexity out of 5.
+10. Volatility/Recovery in Sales: D1 (Digital Exposure) + D2 (Disruption Velocity) + D3 (Recovery Complexity) + Sales Overlay (Score 2-16: 2-4 Favourable, 5-8 Partially Favourable, 9-12 Average, 13-16 Partially Unfavourable).
 11. Applicability of Privacy Regulation: Operates in strict regions (GDPR, CCPA) or has e-commerce.
 12. B2C End Products: B2C = average risk, B2B = favourable.
 13. Years in business: founding year vs current year compared against revenue-tier thresholds.
+14. Cybersecurity Info: Policy Frameworks (ISO 27001, SOC 2, NIST, CIS, OWASP, CSA) + Live Web Security (DMARC/SPF, headers, security.txt) + SEC CISO Governance. Public: 40%/40%/20%, Private: 50%/50%.
+15. Industry & Company Breach History: Systemic Industry Risk Score (0-4 pts from DBIR sector tiers) + Company Breach Score (Base severity [0-4] * Recency [2.0x-0x] + Repeat kicker [0-3]). Private zero-breach floor-capped at Average rating.
 """
 
 UW_PROMPT = PromptTemplate(
@@ -473,9 +489,10 @@ UW = UnderwriterConfig(
     input_fields=[
         "revenue", "customer_type", "has_ecommerce", "domains", "countries_of_operation",
         "continent_spread", "usa_presence", "privacy_policy_published", "compliance_mentions",
-        "quarterly_revenue", "sic_codes", "services_appetite", "internet_exposure_domains",
+        "quarterly_revenue", "sic_codes", "sub_industries", "worst_sub_industry_appetite", "services_appetite", "internet_exposure_domains",
         "customer_base_scale", "digital_exposure", "disruption_speed", "recovery_complexity",
-        "founding_year", "has_cyber_breach"
+        "founding_year", "has_cyber_breach", "cybersecurity_frameworks", "has_dmarc_spf", "has_security_headers", "has_security_txt", "has_ciso_disclosure",
+        "company_breaches", "industry_breach_tier"
     ],
     log_fields=[
         "revenue", "customer_type", "has_ecommerce"
@@ -487,7 +504,7 @@ UW = UnderwriterConfig(
 CONFIG = BusinessRuleConfig(
     rule_id=RULE_ID,
     rule_name="Cyber Risk Underwriting Rating",
-    description="Evaluates all 13 modifiers end-to-end to output a single consolidated underwriting risk rating.",
+    description="Evaluates all 15 modifiers end-to-end to output a single consolidated underwriting risk rating.",
     collector_configs={
         "wikipedia": WIKIPEDIA,
         "wikidata": WIKIDATA,
@@ -495,13 +512,13 @@ CONFIG = BusinessRuleConfig(
         "dnb": DNB,
         "domain": DOMAIN,
         "responses": RESPONSES,
-        "opencorporates": OPENCORPORATES,
         "gdelt": GDELT,
         "courtlistener": COURTLISTENER,
         "ssllabs": SSLLABS,
         "ftc": FTC,
         "wappalyzer": WAPPALYZER,
-        "census_naics": CENSUS_NAICS
+        "census_naics": CENSUS_NAICS,
+        "cisakev": CISAKEV
     },
     coordinator_config=COORD,
     fact_checker_config=FACT,

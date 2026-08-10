@@ -27,15 +27,17 @@ export const modifiers = [
   { id: 2, name: "Amount of sensitive information", rating: "PARTIALLY UNFAVOURABLE", score: "0.0", rationale: "B2C customer type and ecommerce presence increase risk." },
   { id: 3, name: "Domain Encryption", rating: "FAVOURABLE", score: "1/1", rationale: "Only one domain is https encrypted, partially favourable." },
   { id: 4, name: "Geographic Spread", rating: "FAVOURABLE", score: "1.0", rationale: "USA presence and limited continent spread, partially favourable." },
-  { id: 5, name: "Internet footprint", rating: "FAVOURABLE", score: "3.0", rationale: "Enterprise scale with one domain, partially favourable." },
-  { id: 6, name: "Nature of services", rating: "AVERAGE", score: "medium_risk", rationale: "Medium risk services appetite, neutral." },
+  { id: 5, name: "Internet footprint", rating: "FAVOURABLE", score: "3.0", rationale: "1 discovered domain with 10M-100M customer scale multiplier (x3.0), favourable footprint." },
+  { id: 6, name: "Nature of services", rating: "AVERAGE", score: "1.0", rationale: "Acceptable sub-industry appetite multiplier, average risk exposure." },
   { id: 7, name: "Organizational Complexity", rating: "VERY FAVOURABLE", score: "1.0", rationale: "Single subsidiary, relatively simple organizational structure, favourable." },
   { id: 8, name: "Privacy Regulation", rating: "FAVOURABLE", score: "2.0", rationale: "Published policy and compliance with GDPR and CCPA, favourable." },
   { id: 9, name: "Seasonality of sales", rating: "AVERAGE", score: "0.0", rationale: "Insufficient quarterly revenue data, unable to assess." },
-  { id: 10, name: "Volatility/Recovery in Sales", rating: "PARTIALLY UNFAVOURABLE", score: "3.67", rationale: "Moderate digital exposure, disruption speed, and recovery complexity, partially unfavourable." },
+  { id: 10, name: "Volatility/Recovery in Sales", rating: "PARTIALLY UNFAVOURABLE", score: "13.0", rationale: "High digital exposure, disruption velocity, and recovery complexity, partially unfavourable." },
   { id: 11, name: "Applicability of Privacy Regulation", rating: "AVERAGE", score: "0.0", rationale: "Operates in strict regions and has ecommerce, partially unfavourable." },
   { id: 12, name: "B2C End Products", rating: "FAVOURABLE", score: "0.0", rationale: "B2C customer type, average risk." },
-  { id: 13, name: "Years in business", rating: "VERY FAVOURABLE", score: "114", rationale: "Long-standing company, favourable." }
+  { id: 13, name: "Years in business", rating: "VERY FAVOURABLE", score: "114", rationale: "Long-standing company, favourable." },
+  { id: 14, name: "Cybersecurity Info", rating: "FAVOURABLE", score: "2.0", rationale: "Audited ISO 27001 & SOC 2 certs, DMARC email protection, and SEC CISO disclosure." },
+  { id: 15, name: "Industry & Company Breach History", rating: "FAVOURABLE", score: "4.0", rationale: "High-risk insurance industry tier (4 pts) with zero company breaches (0 pts), favorable score." }
 ];
 
 export const finalVerdict = {

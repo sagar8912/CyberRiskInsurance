@@ -67,7 +67,7 @@ export default function LiveAgentTelemetry({ currentStep, isAutoPlaying, hasRun 
     } else if (currentStep === 6) {
       setLogs(prev => [...prev, { time: timeString, text: 'Underwriter Executing Risk Models', status: 'warning' }]);
       setTimeout(() => {
-        setLogs(prev => [...prev, { time: timeString, text: '13 Modifiers Applied', status: 'success' }]);
+        setLogs(prev => [...prev, { time: timeString, text: '14 Modifiers Applied', status: 'success' }]);
         setMessages(prev => [...prev, { sender: 'Underwriter', receiver: 'System', content: 'Generated actuarial scores. Rendering Final Verdict.', status: 'success' }]);
       }, 1000);
     } else if (currentStep >= 7 || hasRun) {
