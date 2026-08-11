@@ -28,10 +28,10 @@ const CustomAgentNode = ({ data }) => {
       
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
         <div style={{
-          background: data.isDone ? 'rgba(16, 185, 129, 0.1)' : (data.isError ? 'rgba(239, 68, 68, 0.1)' : `rgba(30, 64, 175, 0.05)`),
+          background: data.isDone ? (data.isSkipped ? 'rgba(148, 163, 184, 0.1)' : 'rgba(16, 185, 129, 0.1)') : (data.isError ? 'rgba(239, 68, 68, 0.1)' : `rgba(30, 64, 175, 0.05)`),
           padding: '12px',
           borderRadius: '6px',
-          color: data.isDone ? '#10B981' : (data.isError ? '#EF4444' : data.color),
+          color: data.isDone ? (data.isSkipped ? '#64748B' : '#10B981') : (data.isError ? '#EF4444' : data.color),
           flexShrink: 0,
           fontSize: '1.5rem',
           display: 'flex',
@@ -53,12 +53,12 @@ const CustomAgentNode = ({ data }) => {
 
       {/* Live Interaction / Status Area */}
       <div style={{ 
-        background: data.isDone ? (data.isError ? '#FEF2F2' : '#F0FDF4') : (data.isActive ? '#FFF7ED' : '#F8FAFC'), 
-        border: `1px solid ${data.isDone ? (data.isError ? '#FECACA' : '#BBF7D0') : (data.isActive ? '#FED7AA' : '#E5E7EB')}`,
+        background: data.isDone ? (data.isError ? '#FEF2F2' : (data.isSkipped ? '#F1F5F9' : '#F0FDF4')) : (data.isActive ? '#FFF7ED' : '#F8FAFC'), 
+        border: `1px solid ${data.isDone ? (data.isError ? '#FECACA' : (data.isSkipped ? '#E2E8F0' : '#BBF7D0')) : (data.isActive ? '#FED7AA' : '#E5E7EB')}`,
         padding: '8px 12px', 
         borderRadius: '6px', 
         fontSize: '0.75rem', 
-        color: data.isDone ? (data.isError ? '#DC2626' : '#059669') : (data.isActive ? '#C2410C' : '#94A3B8'), 
+        color: data.isDone ? (data.isError ? '#DC2626' : (data.isSkipped ? '#475569' : '#059669')) : (data.isActive ? '#C2410C' : '#94A3B8'), 
         fontWeight: '600',
         display: 'flex',
         alignItems: 'center',
@@ -67,7 +67,7 @@ const CustomAgentNode = ({ data }) => {
         {data.isActive ? (
             <><div className="loader-small" style={{ width: '10px', height: '10px', borderWidth: '2px', borderColor: '#FED7AA', borderLeftColor: '#F26A21' }}></div> {data.activeMessage || "Processing..."}</>
         ) : (data.isDone ? (
-            <>{data.isError ? "✖ " : "✔ "}{data.doneMessage || "Completed"}</>
+            <>{data.isError ? "✖ " : (data.isSkipped ? "↷ " : "✔ ")}{data.doneMessage || "Completed"}</>
         ) : "Waiting for upstream input...")}
       </div>
 
@@ -76,7 +76,7 @@ const CustomAgentNode = ({ data }) => {
   );
 };
 
-export default function AgentWorkflow({ isLoading, hasRun, currentStep = 0 }) {
+export default function AgentWorkflow({ isLoading, hasRun, currentStep = 0, collectorOutputs = null }) {
   const [internalStepId, setInternalStepId] = useState(0);
 
   useEffect(() => {
@@ -105,23 +105,172 @@ export default function AgentWorkflow({ isLoading, hasRun, currentStep = 0 }) {
     };
   };
 
+  const getCollectorStatus = (collectorKey, baseColor, activeMessage, defaultDoneMessage, getCustomDoneMessageFn) => {
+    const defaultStatus = getStatus(3, baseColor, activeMessage, defaultDoneMessage);
+    if (!hasRun || !collectorOutputs) {
+      if (defaultStatus.isDone) {
+        return {
+          ...defaultStatus,
+          doneMessage: "Evidence harvested"
+        };
+      }
+      return defaultStatus;
+    }
+    const report = collectorOutputs[collectorKey];
+    if (!report) {
+      return defaultStatus;
+    }
+    const status = report.status || 'success';
+    if (status === 'skipped') {
+      return {
+        isActive: false,
+        isDone: true,
+        isError: false,
+        isSkipped: true,
+        isFaded: false,
+        color: '#64748B', // Slate gray for skipped
+        activeMessage,
+        doneMessage: report.message || 'Bypassed (Non-SEC)'
+      };
+    } else if (status === 'error') {
+      return {
+        isActive: false,
+        isDone: true,
+        isError: true,
+        isSkipped: false,
+        isFaded: false,
+        color: '#EF4444',
+        activeMessage,
+        doneMessage: report.message || 'Collection failed'
+      };
+    } else {
+      return {
+        isActive: false,
+        isDone: true,
+        isError: false,
+        isSkipped: false,
+        isFaded: false,
+        color: '#10B981',
+        activeMessage,
+        doneMessage: getCustomDoneMessageFn ? getCustomDoneMessageFn(report.findings) : defaultDoneMessage
+      };
+    }
+  };
+
   const initialNodes = [
     { id: '1', position: { x: 740, y: 0 }, type: 'agent', data: { label: 'Input Parameter', description: 'Company and domain targets', icon: <Target size={24} />, ...getStatus(1, '#94A3B8', 'Initializing System...', 'Input parameters validated') } },
     { id: '2', position: { x: 740, y: 150 }, type: 'agent', data: { label: 'Supervisor Agent', description: 'Validates target context before routing.', icon: <Brain size={24} />, ...getStatus(2, '#3B82F6', 'Routing to collectors...', 'Context verified. Dispatched agents.') } },
     
     // Parallel Collectors (Row 1: 3 nodes)
-    { id: '3', position: { x: 360, y: 320 }, type: 'agent', data: { label: 'SEC Collector', description: 'Fetches financial evidence', icon: <FileText size={24} />, ...getStatus(3, '#3B82F6', 'Scraping EDGAR filings...', 'Revenue: $16B extracted') } },
-    { id: '4', position: { x: 740, y: 320 }, type: 'agent', data: { label: 'Wikipedia Collector', description: 'Fetches public profile', icon: <Globe size={24} />, ...getStatus(3, '#3B82F6', 'Parsing infoboxes...', 'Subsidiaries: 1 found') } },
-    { id: '5', position: { x: 1120, y: 320 }, type: 'agent', data: { label: 'Wikidata Collector', description: 'Fetches entity facts', icon: <Database size={24} />, ...getStatus(3, '#3B82F6', 'Querying SPARQL...', 'Countries of Op: 2') } },
+    { 
+      id: '3', 
+      position: { x: 360, y: 320 }, 
+      type: 'agent', 
+      data: { 
+        label: 'SEC Collector', 
+        description: 'Fetches financial evidence', 
+        icon: <FileText size={24} />, 
+        ...getCollectorStatus(
+          'SECCollector', 
+          '#3B82F6', 
+          'Scraping EDGAR filings...', 
+          'Revenue: $16B extracted',
+          (findings) => {
+            const rev = findings?.revenue;
+            if (rev) return `Revenue: $${(rev/1e9).toFixed(1)}B extracted`;
+            return 'Revenue and reports extracted';
+          }
+        ) 
+      } 
+    },
+    { 
+      id: '4', 
+      position: { x: 740, y: 320 }, 
+      type: 'agent', 
+      data: { 
+        label: 'Wikipedia Collector', 
+        description: 'Fetches public profile', 
+        icon: <Globe size={24} />, 
+        ...getCollectorStatus(
+          'Wikipedia', 
+          '#3B82F6', 
+          'Parsing infoboxes...', 
+          'Subsidiaries: 1 found',
+          (findings) => {
+            const subs = findings?.subsidiaries || [];
+            return `Subsidiaries: ${subs.length} found`;
+          }
+        ) 
+      } 
+    },
+    { 
+      id: '5', 
+      position: { x: 1120, y: 320 }, 
+      type: 'agent', 
+      data: { 
+        label: 'Wikidata Collector', 
+        description: 'Fetches entity facts', 
+        icon: <Database size={24} />, 
+        ...getCollectorStatus(
+          'Wikidata', 
+          '#3B82F6', 
+          'Querying SPARQL...', 
+          'Countries of Op: 2',
+          (findings) => {
+            const countries = findings?.countries_of_operation || [];
+            return `Countries of Op: ${countries.length}`;
+          }
+        ) 
+      } 
+    },
     
     // Parallel Collectors (Row 2: 2 nodes)
-    { id: '6', position: { x: 550, y: 490 }, type: 'agent', data: { label: 'DB Collector', description: 'Fetches business metadata', icon: <Building2 size={24} />, ...getStatus(3, '#3B82F6', 'Mapping NAICS...', 'NAICS: 511210 (Software)') } },
-    { id: '7', position: { x: 930, y: 490 }, type: 'agent', data: { label: 'Domain Scraper', description: 'Checks website security signals', icon: <Search size={24} />, ...getStatus(3, '#3B82F6', 'Analyzing headers...', 'Missing privacy policy (Flagged)', true) } },
+    { 
+      id: '6', 
+      position: { x: 550, y: 490 }, 
+      type: 'agent', 
+      data: { 
+        label: 'DB Collector', 
+        description: 'Fetches business metadata', 
+        icon: <Building2 size={24} />, 
+        ...getCollectorStatus(
+          'DBCollector', 
+          '#3B82F6', 
+          'Mapping NAICS...', 
+          'NAICS: 511210 (Software)',
+          (findings) => {
+            const naics = findings?.legal_form?.description || findings?.naics_code || 'Resolved';
+            return `Type: ${naics}`;
+          }
+        ) 
+      } 
+    },
+    { 
+      id: '7', 
+      position: { x: 930, y: 490 }, 
+      type: 'agent', 
+      data: { 
+        label: 'Domain Scraper', 
+        description: 'Checks website security signals', 
+        icon: <Search size={24} />, 
+        ...getCollectorStatus(
+          'DomainScraper', 
+          '#3B82F6', 
+          'Analyzing headers...', 
+          'Missing privacy policy (Flagged)',
+          (findings) => {
+            const hasPolicy = findings?.privacy_policy_published;
+            return hasPolicy ? 'Privacy policy discovered' : 'Missing privacy policy (Flagged)';
+          }
+        ) 
+      } 
+    },
     
     // Post-Collection Processing Pipeline
     { id: '8', position: { x: 740, y: 680 }, type: 'agent', data: { label: 'Coordinator Agent', description: 'Merges raw evidence into normalized profile', icon: <Link size={24} />, ...getStatus(4, '#3B82F6', 'Reconciling conflicts...', 'Entity profile normalized.') } },
     { id: '9', position: { x: 740, y: 840 }, type: 'agent', data: { label: 'Fact Checker Agent', description: 'Verifies claims against evidence.', icon: <CheckSquare size={24} />, ...getStatus(5, '#3B82F6', 'Cross-referencing claims...', '4 verified, 1 unsupported') } },
-    { id: '10', position: { x: 740, y: 1000 }, type: 'agent', data: { label: 'Underwriter Agent', description: 'Applies actuarial models', icon: <Scale size={24} />, ...getStatus(6, '#3B82F6', 'Calculating risk scores...', '13 modifiers applied') } },
+    { id: '10', position: { x: 740, y: 1000 }, type: 'agent', data: { label: 'Underwriter Agent', description: 'Applies actuarial models', icon: <Scale size={24} />, ...getStatus(6, '#3B82F6', 'Calculating risk scores...', '15 modifiers applied') } },
+
     { id: '11', position: { x: 740, y: 1160 }, type: 'agent', data: { label: 'Final Verdict', description: 'Generates final risk output', icon: <BarChart size={24} />, ...getStatus(7, '#10B981', 'Generating...', 'Verdict complete') } },
   ];
 

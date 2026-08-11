@@ -5,6 +5,7 @@ langchain-openai>=0.1.0
 pandas>=2.0.0
 openpyxl>=3.1.0
 pydantic>=2.0.0
-uvicorn
-fastapi
-python-Wappalyzer
+uvicorn>=0.28.0
+fastapi>=0.110.0
+python-Wappalyzer>=0.3.1
+python-dotenv>=1.0.0

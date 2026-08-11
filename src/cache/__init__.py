@@ -90,14 +90,25 @@ class CachingCollectorWrapper:
                     "sec": "SECCollector",
                     "dnb": "DBCollector",
                     "domain": "DomainScraper",
-                    "responses": "ResponsesAPI"
+                    "responses": "ResponsesAPI",
+                    "opencorporates": "OpenCorporates",
+                    "gdelt": "GDELT",
+                    "courtlistener": "CourtListener",
+                    "ssllabs": "SSLLabs",
+                    "ftc": "FTC",
+                    "wappalyzer": "Wappalyzer",
+                    "census_naics": "CensusNAICS",
+                    "cisakev": "CISAKEVCollector"
                 }
                 mapped_name = source_mapping.get(self.source_type, self.source_type)
                 if mapped_name in evidence:
-                    logger.info(f"[{agent_name}] Cache hit. Restored cached findings.")
                     res = evidence[mapped_name]
-                    logger.info(f"[{agent_name}] Extraction complete (cached): status={res.get('status', 'success')}, findings={res.get('findings')}")
-                    return res
+                    if res.get("status") == "success" and res.get("findings"):
+                        logger.info(f"[{agent_name}] Cache hit. Restored cached findings.")
+                        logger.info(f"[{agent_name}] Extraction complete (cached): status={res.get('status')}, findings={res.get('findings')}")
+                        return res
+                    else:
+                        logger.info(f"[{agent_name}] Cached status was '{res.get('status')}'. Bypassing cache to re-execute live harvesting.")
                     
         logger.info(f"[{agent_name}] Cache miss. Executing live harvesting in background threadpool...")
         import asyncio

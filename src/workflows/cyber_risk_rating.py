@@ -14,13 +14,13 @@ from src.collectors import (
     DNBCollectorAgent,
     DomainScraperCollectorAgent,
     ResponsesAPICollectorAgent,
-    OpenCorporatesCollectorAgent,
     GDELTCollectorAgent,
     CourtListenerCollectorAgent,
     SSLLabsCollectorAgent,
     FTCFeedCollectorAgent,
     WappalyzerCollectorAgent,
-    CensusNAICSCollectorAgent
+    CensusNAICSCollectorAgent,
+    CISAKEVCollectorAgent
 )
 from src.processors import (
     CollectionCoordinatorAgent,
@@ -53,6 +53,7 @@ class CyberRiskRatingState(TypedDict, total=False):
     cache_data: Any
     routing_tier: str
     tool_budget: list
+    skip_sec: bool
 
     # Core workflow data
     reports: Annotated[dict, merge_reports]
@@ -98,13 +99,13 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
     dnb_base = factory.create_collector_agent("dnb", DNBCollectorAgent)
     domain_base = factory.create_collector_agent("domain", DomainScraperCollectorAgent)
     responses_base = factory.create_collector_agent("responses", ResponsesAPICollectorAgent)
-    opencorporates_base = factory.create_collector_agent("opencorporates", OpenCorporatesCollectorAgent)
     gdelt_base = factory.create_collector_agent("gdelt", GDELTCollectorAgent)
     courtlistener_base = factory.create_collector_agent("courtlistener", CourtListenerCollectorAgent)
     ssllabs_base = factory.create_collector_agent("ssllabs", SSLLabsCollectorAgent)
     ftc_base = factory.create_collector_agent("ftc", FTCFeedCollectorAgent)
     wappalyzer_base = factory.create_collector_agent("wappalyzer", WappalyzerCollectorAgent)
     census_naics_base = factory.create_collector_agent("census_naics", CensusNAICSCollectorAgent)
+    cisakev_base = factory.create_collector_agent("cisakev", CISAKEVCollectorAgent)
 
     # Wrap with cache if enabled
     wiki = CachingCollectorWrapper(wiki_base, "wikipedia", rule_id, cache) if enable_cache and cache.enabled else wiki_base
@@ -113,13 +114,13 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
     dnb = CachingCollectorWrapper(dnb_base, "dnb", rule_id, cache) if enable_cache and cache.enabled else dnb_base
     domain_agent = CachingCollectorWrapper(domain_base, "domain", rule_id, cache) if enable_cache and cache.enabled else domain_base
     responses = CachingCollectorWrapper(responses_base, "responses", rule_id, cache) if enable_cache and cache.enabled else responses_base
-    opencorporates = CachingCollectorWrapper(opencorporates_base, "opencorporates", rule_id, cache) if enable_cache and cache.enabled else opencorporates_base
     gdelt_agent = CachingCollectorWrapper(gdelt_base, "gdelt", rule_id, cache) if enable_cache and cache.enabled else gdelt_base
     courtlistener = CachingCollectorWrapper(courtlistener_base, "courtlistener", rule_id, cache) if enable_cache and cache.enabled else courtlistener_base
     ssllabs = CachingCollectorWrapper(ssllabs_base, "ssllabs", rule_id, cache) if enable_cache and cache.enabled else ssllabs_base
     ftc = CachingCollectorWrapper(ftc_base, "ftc", rule_id, cache) if enable_cache and cache.enabled else ftc_base
     wappalyzer = CachingCollectorWrapper(wappalyzer_base, "wappalyzer", rule_id, cache) if enable_cache and cache.enabled else wappalyzer_base
     census_naics = CachingCollectorWrapper(census_naics_base, "census_naics", rule_id, cache) if enable_cache and cache.enabled else census_naics_base
+    cisakev = CachingCollectorWrapper(cisakev_base, "cisakev", rule_id, cache) if enable_cache and cache.enabled else cisakev_base
 
     # Create processors
     coordinator = factory.create_coordinator(CollectionCoordinatorAgent)
@@ -153,7 +154,16 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
         wf_log = get_agent_logger("workflow")
         t0 = time.time()
         wf_log.info("[Workflow Node] sec_node → START")
-        rep = await sec.collect(state["company_name"], state["domain"])
+        if state.get("skip_sec"):
+            wf_log.info("[Workflow Node] sec_node → SKIPPED (non-SEC company)")
+            rep = {
+                "source": "SECCollector",
+                "status": "skipped",
+                "message": "Company not registered with SEC EDGAR.",
+                "findings": {}
+            }
+        else:
+            rep = await sec.collect(state["company_name"], state["domain"])
         elapsed = (time.time() - t0) * 1000
         wf_log.info(f"[Workflow Node] sec_node → DONE (status={rep.get('status', '?')}, elapsed={elapsed:.0f}ms)")
         return {"reports": {"SECCollector": rep}, "collected_evidence": {"SECCollector": rep}}
@@ -187,16 +197,6 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
         elapsed = (time.time() - t0) * 1000
         wf_log.info(f"[Workflow Node] responses_node → DONE (status={rep.get('status', '?')}, elapsed={elapsed:.0f}ms)")
         return {"reports": {"ResponsesAPI": rep}, "collected_evidence": {"ResponsesAPI": rep}}
-
-    async def opencorporates_node(state: CyberRiskRatingState) -> dict:
-        wf_log = get_agent_logger("workflow")
-        t0 = time.time()
-        wf_log.info("[Workflow Node] opencorporates_node → START")
-        rep = await opencorporates.collect(state["company_name"], state["domain"])
-        elapsed = (time.time() - t0) * 1000
-        wf_log.info(f"[Workflow Node] opencorporates_node → DONE (status={rep.get('status', '?')}, elapsed={elapsed:.0f}ms)")
-        return {"reports": {"OpenCorporates": rep}, "collected_evidence": {"OpenCorporates": rep}}
-
     async def gdelt_node(state: CyberRiskRatingState) -> dict:
         wf_log = get_agent_logger("workflow")
         t0 = time.time()
@@ -245,13 +245,21 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
     async def census_naics_node(state: CyberRiskRatingState) -> dict:
         wf_log = get_agent_logger("workflow")
         t0 = time.time()
-        # Pass SIC codes from reconciled_profile or collected evidence to enable mapping
         sic_codes = state.get("reconciled_profile", {}).get("sic_codes", [])
         wf_log.info(f"[Workflow Node] census_naics_node → START (sic_codes={sic_codes})")
         rep = await census_naics.collect(state["company_name"], state["domain"], sic_codes=sic_codes)
         elapsed = (time.time() - t0) * 1000
         wf_log.info(f"[Workflow Node] census_naics_node → DONE (status={rep.get('status', '?')}, elapsed={elapsed:.0f}ms)")
         return {"reports": {"CensusNAICS": rep}, "collected_evidence": {"CensusNAICS": rep}}
+
+    async def cisakev_node(state: CyberRiskRatingState) -> dict:
+        wf_log = get_agent_logger("workflow")
+        t0 = time.time()
+        wf_log.info("[Workflow Node] cisakev_node → START")
+        rep = await cisakev.collect(state["company_name"], state["domain"])
+        elapsed = (time.time() - t0) * 1000
+        wf_log.info(f"[Workflow Node] cisakev_node → DONE (status={rep.get('status', '?')}, elapsed={elapsed:.0f}ms)")
+        return {"reports": {"CISAKEVCollector": rep}, "collected_evidence": {"CISAKEVCollector": rep}}
 
     async def coordinator_node(state: CyberRiskRatingState) -> dict:
         wf_log = get_agent_logger("workflow")
@@ -353,6 +361,7 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
                 
         return wrapped
 
+
     # 2. Build graph structure
     g = StateGraph(CyberRiskRatingState)
     g.add_node("supervisor_node", supervisor_node)
@@ -370,6 +379,7 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
     g.add_node("ssllabs", with_step(ssllabs_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("ftc", with_step(ftc_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("wappalyzer", with_step(wappalyzer_node, 3, "collector_node"), retry_policy=api_retry)
+    g.add_node("cisakev", with_step(cisakev_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("census_naics", with_step(census_naics_node, 4, "coordinator_node"), retry_policy=api_retry)
 
     # Processors
@@ -395,19 +405,19 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
         "supervisor_node",
         lambda x: [
             "wikidata", "sec", "dnb", "responses",
-            "opencorporates", "gdelt", "courtlistener", "ssllabs", "ftc", "wappalyzer"
+            "gdelt", "courtlistener", "ssllabs", "ftc", "wappalyzer", "cisakev"
         ] if (x.get("valid") and not x.get("cache_hit")) else [],
         {
             "wikidata": "wikidata",
             "sec": "sec",
             "dnb": "dnb",
             "responses": "responses",
-            "opencorporates": "opencorporates",
             "gdelt": "gdelt",
             "courtlistener": "courtlistener",
             "ssllabs": "ssllabs",
             "ftc": "ftc",
-            "wappalyzer": "wappalyzer"
+            "wappalyzer": "wappalyzer",
+            "cisakev": "cisakev"
         }
     )
 
@@ -418,12 +428,12 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
     g.add_edge("dnb", "coordinator")
     g.add_edge("responses", "domain")
     g.add_edge("domain", "coordinator")
-    g.add_edge("opencorporates", "coordinator")
     g.add_edge("gdelt", "coordinator")
     g.add_edge("courtlistener", "coordinator")
     g.add_edge("ssllabs", "coordinator")
     g.add_edge("ftc", "coordinator")
     g.add_edge("wappalyzer", "coordinator")
+    g.add_edge("cisakev", "coordinator")
 
     # Census NAICS runs after coordinator (needs SIC codes from reconciled profile)
     g.add_edge("coordinator", "census_naics")

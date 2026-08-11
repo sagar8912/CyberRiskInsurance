@@ -286,7 +286,7 @@ function App() {
       )}
 
       {showWorkflow && (
-        <AgentWorkflow isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} />
+        <AgentWorkflow isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} collectorOutputs={analysisData?.collectorOutputs} />
       )}
 
       <ExecutionTimeline isLoading={isStreaming} hasRun={hasRun} currentStep={currentStep} />

@@ -103,6 +103,20 @@ def supervisor_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 f"Supervisor Warning: Entity mismatch! Name '{name}' does not match domain '{domain}'."
             )
 
+    # 3.5 SEC Registration Check
+    skip_sec = False
+    try:
+        from src.collectors import SECCollectorAgent
+        sec_agent = SECCollectorAgent(None)
+        cik, resolved_name = sec_agent._resolve_cik(name)
+        if not cik:
+            skip_sec = True
+            logs.append(f"Supervisor: SEC Lookup failed for '{name}' - classified as Non-SEC company.")
+        else:
+            logs.append(f"Supervisor: SEC CIK resolved: {cik} - classified as SEC-registered company.")
+    except Exception as e:
+        logs.append(f"Supervisor: SEC lookup failed due to error: {e}")
+
     # 4. Cache Lookup
     cache_mgr = CacheManager()
     cache_entry = cache_mgr.lookup(name, domain)
@@ -130,5 +144,6 @@ def supervisor_node(state: Dict[str, Any]) -> Dict[str, Any]:
         "cache_hit": cache_hit,
         "cache_data": cache_entry if cache_hit else None,
         "collected_evidence": collected_evidence_from_cache if cache_hit else state.get("collected_evidence", {}),
+        "skip_sec": skip_sec,
         "audit_logs": state.get("audit_logs", []) + logs
     }

@@ -1,4 +1,26 @@
 import os
+import sys
+
+# Ensure project root is always in sys.path
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
+
+# Automatically load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    load_dotenv(_env_path, override=True)
+except ImportError:
+    env_file = os.path.join(_project_root, ".env")
+    if os.path.exists(env_file):
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip().strip('"').strip("'")
+
 import json
 import asyncio
 from fastapi import FastAPI, HTTPException
@@ -362,6 +384,7 @@ async def analyze_company_stream(req: AnalysisRequest):
                 api_logger.info(f"[ASYNC TASK END] run_graph_stream for {company_name} (elapsed {elapsed_task:.2f}s)")
                 await queue.put(None)
 
+
         stream_task = asyncio.create_task(run_graph_stream())
         api_logger.info(f"[{time.time():.3f}] [SSE STREAM OPENED] Stream opened for {company_name} (run_id: {run_id})")
 
@@ -456,7 +479,6 @@ async def analyze_company_stream(req: AnalysisRequest):
             yield f"data: {json.dumps({'type': 'error', 'message': 'Graph execution failed: TimeoutError'})}\n\n"
         finally:
             api_logger.info(f"[{time.time():.3f}] [SSE STREAM CLOSED] Streaming connection closed for {company_name}")
-
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",

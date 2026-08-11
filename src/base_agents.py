@@ -131,134 +131,114 @@ class BaseAgent:
         logger.debug(f"[{agent_name}] Full prompt sent to LLM:\n{'='*60}\n{prompt}\n{'='*60}")
 
         if is_azure:
-            # For Azure, the effective API key could be standard OPENAI_API_KEY if AZURE_OPENAI_API_KEY is not set
             azure_key = env_azure_key or openai_key
             if not azure_key:
                 raise ValueError("Azure OpenAI detected but no API key configured. Set AZURE_OPENAI_API_KEY or OPENAI_API_KEY.")
             if not env_azure_endpoint:
                 raise ValueError("Azure OpenAI detected but no endpoint configured. Set AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_BASE or OPENAI_API_BASE.")
-                
             model_name = env_deployment_name
-            logger.info(f"[{agent_name}] LLM Provider: Azure OpenAI | Deployment: {model_name} | Endpoint: {env_azure_endpoint} | API Version: {env_api_version} | Temperature: {temperature}")
+        last_exception = None
+        for m_name in groq_models:
             try:
-                from langchain_openai import AzureChatOpenAI
-                llm = AzureChatOpenAI(
-                    azure_endpoint=env_azure_endpoint,
-                    api_key=azure_key,
-                    api_version=env_api_version,
-                    azure_deployment=env_deployment_name,
-                    temperature=temperature,
-                    timeout=45.0,
-                    max_retries=1
-                )
-            except ImportError:
-                llm = SimpleChatOpenAI(
-                    model=env_deployment_name,
-                    api_key=azure_key,
-                    temperature=temperature,
-                    azure_endpoint=env_azure_endpoint,
-                    azure_api_version=env_api_version
-                )
-        elif openai_key:
-            model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-            logger.info(f"[{agent_name}] LLM Provider: OpenAI | Model: {model_name} | Temperature: {temperature}")
-            try:
-                from langchain_openai import ChatOpenAI
-                llm = ChatOpenAI(
-                    model=model_name,
-                    api_key=openai_key,
-                    temperature=temperature,
-                    timeout=45.0,
-                    max_retries=1
-                )
-            except ImportError:
-                llm = SimpleChatOpenAI(
-                    model=model_name,
-                    api_key=openai_key,
-                    temperature=temperature
-                )
-        elif groq_key:
-            model_name = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-            logger.info(f"[{agent_name}] LLM Provider: Groq | Model: {model_name} | Temperature: {temperature}")
-            llm = ChatGroq(
-                model=model_name,
-                api_key=groq_key,
-                temperature=temperature,
-                timeout=45.0,
-                max_retries=1
-            )
-        else:
-            raise ValueError(
-                "No LLM credentials configured. Please set AZURE_OPENAI_API_KEY, OPENAI_API_KEY, or GROQ_API_KEY."
-            )
-
-        
-        import time
-        import re
-        company_name_match = re.search(r"Company Name:\s*(.*?)\n", prompt)
-        company_name = company_name_match.group(1).strip() if company_name_match else "Unknown"
-        
-        prompt_chars = len(prompt)
-        est_prompt_tokens = int(prompt_chars / 4)
-        
-        t0 = time.time()
-        ts_before = time.strftime('%Y-%m-%d %H:%M:%S')
-        logger.info(f"[{agent_name}] [DIAGNOSTIC] START invoke() | Company: {company_name} | Time: {ts_before} | Prompt Chars: {prompt_chars} | Est. Prompt Tokens: {est_prompt_tokens}")
-        
-        try:
-            res = llm.invoke(prompt)
-            t1 = time.time()
-            ts_after = time.strftime('%Y-%m-%d %H:%M:%S')
-            elapsed = t1 - t0
-            
-            prompt_tokens = 0
-            completion_tokens = 0
-            
-            # Track token usage if tracker is present
-            if hasattr(res, 'response_metadata') and res.response_metadata:
-                token_usage = res.response_metadata.get('token_usage', {})
-                if token_usage:
-                    prompt_tokens = token_usage.get('prompt_tokens', 0)
-                    completion_tokens = token_usage.get('completion_tokens', 0)
-                    if self.tracker:
-                        self.tracker.add_usage(prompt_tokens, completion_tokens)
-            
-            logger.info(f"[{agent_name}] [DIAGNOSTIC] END invoke() | Company: {company_name} | Time: {ts_after} | Elapsed: {elapsed:.2f}s | Prompt Tokens: {prompt_tokens} | Response Tokens: {completion_tokens}")
-            
-            # Calculate cost estimate based on model type
-            if azure_key or openai_key:
-                if "gpt-4o-mini" in model_name:
-                    input_rate = 0.15
-                    output_rate = 0.60
-                elif "gpt-4o" in model_name:
-                    input_rate = 2.50
-                    output_rate = 10.00
-                else:
-                    input_rate = 0.15
-                    output_rate = 0.60
-            else:
-                input_rate = 0.59
-                output_rate = 0.79
+                import time
+                import re
+                company_name_match = re.search(r"Company Name:\s*(.*?)\n", prompt)
+                company_name = company_name_match.group(1).strip() if company_name_match else "Unknown"
                 
-            cost = (prompt_tokens * input_rate + completion_tokens * output_rate) / 1000000.0
-            
-            # Log usage & outputs
-            logger.info(f"[{agent_name}] LLM Response received. Usage: input={prompt_tokens}, output={completion_tokens}, reasoning=0, cached=0, tool_calls=0, cost=${cost:.6f}")
-            logger.debug(f"[{agent_name}] Output text:\n{str(res.content)}")
-            
-            return str(res.content)
-        except Exception as e:
-            t_fail = time.time()
-            elapsed_fail = t_fail - t0
-            import traceback
-            error_type = type(e).__name__
-            
-            if "Timeout" in error_type or "timeout" in str(e).lower():
-                logger.error(f"[{agent_name}] [DIAGNOSTIC] TIMEOUT invoke() | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {error_type} - {e}")
-                raise TimeoutError(f"LLM request timed out after {elapsed_fail:.1f}s. This is usually caused by Azure OpenAI rate limits or network issues.")
-            else:
-                logger.error(f"[{agent_name}] [DIAGNOSTIC] FAILED invoke() | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {error_type} - {e}\nTraceback:\n{traceback.format_exc()}")
-                raise RuntimeError(f"Error calling live model: {e}")
+                prompt_chars = len(prompt)
+                est_prompt_tokens = int(prompt_chars / 4)
+                
+                t0 = time.time()
+                ts_before = time.strftime('%Y-%m-%d %H:%M:%S')
+
+                if is_azure:
+                    logger.info(f"[{agent_name}] LLM Provider: Azure OpenAI | Deployment: {m_name} | Endpoint: {env_azure_endpoint} | API Version: {env_api_version} | Temperature: {temperature}")
+                    from langchain_openai import AzureChatOpenAI
+                    llm = AzureChatOpenAI(
+                        azure_endpoint=env_azure_endpoint,
+                        azure_deployment=m_name,
+                        api_key=azure_key,
+                        api_version=env_api_version,
+                        temperature=temperature,
+                        timeout=45.0,
+                        max_retries=1
+                    )
+                elif openai_key:
+                    logger.info(f"[{agent_name}] LLM Provider: OpenAI | Model: {m_name} | Temperature: {temperature}")
+                    from langchain_openai import ChatOpenAI
+                    llm = ChatOpenAI(
+                        model=m_name,
+                        api_key=openai_key,
+                        temperature=temperature,
+                        timeout=45.0,
+                        max_retries=1
+                    )
+                elif groq_key:
+                    logger.info(f"[{agent_name}] LLM Provider: Groq | Model: {m_name} | Temperature: {temperature}")
+                    llm = ChatGroq(
+                        model=m_name,
+                        api_key=groq_key,
+                        temperature=temperature,
+                        timeout=45.0,
+                        max_retries=1
+                    )
+
+                logger.info(f"[{agent_name}] [DIAGNOSTIC] START invoke() | Company: {company_name} | Time: {ts_before} | Prompt Chars: {prompt_chars} | Est. Prompt Tokens: {est_prompt_tokens}")
+                
+                res = llm.invoke(prompt)
+                
+                t1 = time.time()
+                ts_after = time.strftime('%Y-%m-%d %H:%M:%S')
+                elapsed = t1 - t0
+
+                prompt_tokens = 0
+                completion_tokens = 0
+                
+                if hasattr(res, 'response_metadata') and res.response_metadata:
+                    token_usage = res.response_metadata.get('token_usage', {})
+                    if token_usage:
+                        prompt_tokens = token_usage.get('prompt_tokens', 0)
+                        completion_tokens = token_usage.get('completion_tokens', 0)
+                        if self.tracker:
+                            self.tracker.add_usage(prompt_tokens, completion_tokens)
+                
+                logger.info(f"[{agent_name}] [DIAGNOSTIC] END invoke() | Company: {company_name} | Time: {ts_after} | Elapsed: {elapsed:.2f}s | Prompt Tokens: {prompt_tokens} | Response Tokens: {completion_tokens}")
+
+                if azure_key or openai_key:
+                    if "gpt-4o-mini" in m_name:
+                        input_rate = 0.15
+                        output_rate = 0.60
+                    elif "gpt-4o" in m_name:
+                        input_rate = 2.50
+                        output_rate = 10.00
+                    else:
+                        input_rate = 0.15
+                        output_rate = 0.60
+                else:
+                    input_rate = 0.59
+                    output_rate = 0.79
+                    
+                cost = (prompt_tokens * input_rate + completion_tokens * output_rate) / 1000000.0
+                
+                logger.info(f"[{agent_name}] LLM Response received ({m_name}). Usage: input={prompt_tokens}, output={completion_tokens}, cost=${cost:.6f}")
+                logger.debug(f"[{agent_name}] Output text:\n{str(res.content)}")
+                
+                return str(res.content)
+            except Exception as e:
+                t_fail = time.time()
+                elapsed_fail = t_fail - t0
+                last_exception = e
+                error_type = type(e).__name__
+
+                if "Timeout" in error_type or "timeout" in str(e).lower():
+                    logger.error(f"[{agent_name}] [DIAGNOSTIC] TIMEOUT invoke() on model '{m_name}' | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {error_type} - {e}")
+                else:
+                    logger.error(f"[{agent_name}] [DIAGNOSTIC] FAILED invoke() on model '{m_name}' | Company: {company_name} | Elapsed: {elapsed_fail:.2f}s | Exception: {error_type} - {e}")
+
+                logger.warning(f"[{agent_name}] LLM invocation failed on model '{m_name}'. Retrying with next fallback model if available...")
+                continue
+
+        raise RuntimeError(f"Error calling live model across all fallback models: {last_exception}")
 
     def parse_json(self, text: str) -> Dict[str, Any]:
         logger = self.get_logger()
@@ -290,7 +270,8 @@ class BaseAgent:
                 except json.JSONDecodeError:
                     pass
             logger.error(f"[{agent_name}] parse_json failed entirely. Raw text:\n{text}")
-            raise ValueError(f"Failed to parse LLM output as JSON. Output was: {text}. Error: {e}")
+            truncated = text[:500] + ("..." if len(text) > 500 else "")
+            raise ValueError(f"Failed to parse LLM output as JSON. Output (truncated): {truncated}. Error: {e}")
 
 class BaseCollectorAgent(BaseAgent):
     pass

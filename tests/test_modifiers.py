@@ -232,5 +232,178 @@ class TestModifiersAndParser(unittest.TestCase):
         res4 = coordinator.infer_sic_codes_dynamically("Generic Random Inc", {}, ["7372"])
         self.assertEqual(res4, ["7372"])
 
+    def test_report_comparison(self):
+        from reports.report_generator import generate_underwriting_audit_report
+        mock_state = {
+            "entity_status": "Match",
+            "risk_category": "Partially Favourable",
+            "confidence_score": 58.3,
+            "confidence_band": "Medium",
+            "human_escalation_flag": False,
+            "token_summary": {"prompt_tokens": 1000, "completion_tokens": 200, "total_tokens": 1200},
+            "collected_evidence": {
+                "Wikipedia": {
+                    "status": "success",
+                    "findings": {
+                        "subsidiaries": ["Safeco", "State Auto", "Ironshore", "Peerless"],
+                        "acquisitions": []
+                    }
+                }
+            },
+            "reconciled_profile": {
+                "revenue": 50218500000,
+                "founding_year": 1912,
+                "customer_type": "MIX",
+                "has_ecommerce": True,
+                "privacy_policy_published": True,
+                "subsidiaries": ["Safeco", "State Auto", "Ironshore", "Peerless"],
+                "acquisitions": [], 
+                "countries_of_operation": ["United States", "Brazil"],
+                "continent_spread": ["North America"],
+                "domains": [{"url": "libertymutual.com", "https_encrypted": True}],
+                "digital_exposure": 4,
+                "disruption_speed": 3,
+                "recovery_complexity": 4,
+                "sic_codes": ["6331"]
+            },
+            "modifier_scores": {
+                "Mergers and Acquisitions": {"rating": "favourable", "score": "8.00"},
+                "Amount of sensitive information": {"rating": "partially unfavourable", "score": "0.00"},
+                "Domain Encryption": {"rating": "favourable", "score": "12/12"},
+                "Geographic Spread": {"rating": "average", "score": "15.00"},
+                "Internet footprint": {"rating": "favourable", "score": "3.0"},
+                "Nature of services": {"rating": "partially unfavourable", "score": "high_risk"},
+                "Organizational Complexity": {"rating": "average", "score": "24.00"},
+                "Privacy Regulation": {"rating": "partially favourable", "score": "1.00"},
+                "Seasonality of sales": {"rating": "average", "score": "0.00"},
+                "Volatility/Recovery in Sales": {"rating": "average", "score": "10.00"},
+                "Applicability of Privacy Regulation": {"rating": "average", "score": "0.00"},
+                "B2C End Products": {"rating": "partially favourable", "score": "0.00"},
+                "Years in business": {"rating": "very favourable", "score": "114.00"},
+                "Cybersecurity Info": {"rating": "favourable", "score": "2.0"},
+                "Industry & Company Breach History": {"rating": "favourable", "score": "4.0"}
+            },
+            "underwriting_rationale": {}
+        }
+        # Test new JSON key loading path
+        report_path_json = generate_underwriting_audit_report(
+            mock_state,
+            "Liberty Mutual Insurance",
+            "www.libertymutualgroup.com",
+            "cyber_risk_rating",
+            ground_truth_key="liberty_mutual"
+        )
+        self.assertTrue(os.path.exists(report_path_json))
+        if os.path.exists(report_path_json):
+            os.remove(report_path_json)
+
+    def test_volatility_v1_modifier(self):
+        from src.processors import AssessmentUnderwriterAgent
+        underwriter = self.factory.create_underwriter(AssessmentUnderwriterAgent)
+        
+        # Test 1: Low digital exposure (D1=1, D2=1, D3=1) + Favourable overlay (-1) => Total 2 => Favourable (VR-01)
+        prof1 = {"digital_exposure": 1, "disruption_speed": 1, "recovery_complexity": 1, "has_sales_spikes": False}
+        res1 = underwriter.evaluate_modifiers(prof1)
+        vol1 = res1["modifier_scores"]["Volatility/Recovery in Sales"]
+        self.assertEqual(vol1["rating"], "favourable")
+        self.assertEqual(vol1["score"], 2.0)
+
+        # Test 2: High digital exposure (D1=5, D2=5, D3=5) + Spikes (+1) => Total 16 => Partially Unfavourable (VR-04)
+        prof2 = {"digital_exposure": 5, "disruption_speed": 5, "recovery_complexity": 5, "has_sales_spikes": True}
+        res2 = underwriter.evaluate_modifiers(prof2)
+        vol2 = res2["modifier_scores"]["Volatility/Recovery in Sales"]
+        self.assertEqual(vol2["rating"], "partially unfavourable")
+        self.assertEqual(vol2["score"], 16.0)
+
+    def test_nature_of_services_modifier(self):
+        from src.processors import AssessmentUnderwriterAgent
+        underwriter = self.factory.create_underwriter(AssessmentUnderwriterAgent)
+        
+        # Test 1: >1B Revenue, 2 sub-industries, Target appetite (0.1) => Score 0.2 => Very Favourable (NS-01)
+        prof1 = {"revenue": 2000000000, "sub_industries": ["Property & Casualty", "Reinsurance"], "worst_sub_industry_appetite": "target"}
+        res1 = underwriter.evaluate_modifiers(prof1)
+        ns1 = res1["modifier_scores"]["Nature of services"]
+        self.assertEqual(ns1["rating"], "very favourable")
+        self.assertEqual(ns1["score"], "0.2")
+
+        # Test 2: >1B Revenue, 5 sub-industries, Prohibited appetite (x3) => Score 15.0 => Average (NS-04)
+        prof2 = {"revenue": 2000000000, "sub_industries": ["1", "2", "3", "4", "5"], "worst_sub_industry_appetite": "prohibited"}
+        res2 = underwriter.evaluate_modifiers(prof2)
+        ns2 = res2["modifier_scores"]["Nature of services"]
+        self.assertEqual(ns2["rating"], "average")
+        self.assertEqual(ns2["score"], "15.0")
+
+    def test_internet_footprint_v1_modifier(self):
+        from src.processors import AssessmentUnderwriterAgent
+        underwriter = self.factory.create_underwriter(AssessmentUnderwriterAgent)
+        
+        # Test 1: >1B Revenue, 1 domain, 100k customers (1.5 multiplier) => Score 1.5 => Very Favourable (IF-01)
+        prof1 = {"revenue": 2000000000, "domains": [{"url": "example.com"}], "estimated_customers_count": 50000}
+        res1 = underwriter.evaluate_modifiers(prof1)
+        if1 = res1["modifier_scores"]["Internet footprint"]
+        self.assertEqual(if1["rating"], "very favourable")
+        self.assertEqual(if1["score"], "1.5")
+
+        # Test 2: >1B Revenue, 5 domains, >1B customers (4.0 multiplier) => Score 20.0 => Average (IF-04)
+        prof2 = {"revenue": 2000000000, "domains": [{"url": f"d{i}.com"} for i in range(5)], "estimated_customers_count": 2000000000}
+        res2 = underwriter.evaluate_modifiers(prof2)
+        if2 = res2["modifier_scores"]["Internet footprint"]
+        self.assertEqual(if2["rating"], "average")
+        self.assertEqual(if2["score"], "20.0")
+
+    def test_cybersecurity_info_modifier(self):
+        from src.processors import AssessmentUnderwriterAgent
+        underwriter = self.factory.create_underwriter(AssessmentUnderwriterAgent)
+
+        # Test 1: Public Entity with Audited Certs (ISO 27001) + DMARC + CISO => Favourable
+        prof1 = {
+            "revenue": 2000000000, "entity_status": "Public",
+            "cybersecurity_frameworks": ["ISO 27001", "SOC 2 Type II"],
+            "has_dmarc_spf": True, "has_security_headers": True, "has_ciso_disclosure": True
+        }
+        res1 = underwriter.evaluate_modifiers(prof1)
+        ci1 = res1["modifier_scores"]["Cybersecurity Info"]
+        self.assertEqual(ci1["rating"], "favourable")
+
+        # Test 2: Private Entity with no certs (neutral) + weak web security => Average / Partially Unfavourable
+        prof2 = {
+            "revenue": 10000000, "entity_status": "Private",
+            "cybersecurity_frameworks": [],
+            "has_dmarc_spf": False, "has_security_headers": False
+        }
+        res2 = underwriter.evaluate_modifiers(prof2)
+        ci2 = res2["modifier_scores"]["Cybersecurity Info"]
+        self.assertIn(ci2["rating"], ["average", "partially unfavourable"])
+
+    def test_industry_and_company_breach_history_modifier(self):
+        from src.processors import AssessmentUnderwriterAgent
+        underwriter = self.factory.create_underwriter(AssessmentUnderwriterAgent)
+
+        # Test 1: Public Mega Enterprise with 0 breaches in High-risk industry (7372: 3 pts) => Score 3.0 => Favourable (BH-02)
+        prof1 = {
+            "revenue": 2000000000, "entity_status": "Public", "sic_codes": ["7372"], "company_breaches": []
+        }
+        res1 = underwriter.evaluate_modifiers(prof1)
+        bh1 = res1["modifier_scores"]["Industry & Company Breach History"]
+        self.assertEqual(bh1["rating"], "favourable")
+
+        # Test 2: Private SMB with 0 breaches -> Private Zero-Breach Floor applies -> Capped at Average
+        prof2 = {
+            "revenue": 10000000, "entity_status": "Private", "sic_codes": ["7372"], "company_breaches": []
+        }
+        res2 = underwriter.evaluate_modifiers(prof2)
+        bh2 = res2["modifier_scores"]["Industry & Company Breach History"]
+        self.assertEqual(bh2["rating"], "average")
+
+        # Test 3: CISA KEV Active Exploit Penalty
+        prof3 = {
+            "revenue": 2000000000, "entity_status": "Public", "sic_codes": ["7372"], "company_breaches": [],
+            "cisa_kev_matches": [{"cve_id": "CVE-2023-34362", "vulnerability_name": "MOVEit Transfer Vulnerability"}],
+            "has_cisa_kev_vulnerabilities": True
+        }
+        res3 = underwriter.evaluate_modifiers(prof3)
+        bh3 = res3["modifier_scores"]["Industry & Company Breach History"]
+        self.assertEqual(bh3["score"], "4.0")
+
 if __name__ == "__main__":
     unittest.main()

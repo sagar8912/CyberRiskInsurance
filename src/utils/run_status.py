@@ -88,7 +88,7 @@ class RunStatusCacheManager:
                     expired_ids.append((rid, status))
             for rid, _ in expired_ids:
                 del self._cache[rid]
-                
+
         for rid, status in expired_ids:
             self._get_logger().info(f"[RunStatusCache] Run expired/removed: run_id={rid}, previous_status={status}")
         return len(expired_ids)
