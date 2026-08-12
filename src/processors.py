@@ -2001,8 +2001,6 @@ class UnderwriterAgent(BaseUnderwriterAgent):
         underwriter_logger.info(f"Confidence Score: {confidence_score}% ({confidence_band})")
         underwriter_logger.info(f"Human Escalation Required: {human_escalation_flag}")
         underwriter_logger.info("********************************************")
-
->>>>>>> shivam/main
         return {
             "risk_category": risk_category,
             "underwriting_rationale": underwriting_rationale,

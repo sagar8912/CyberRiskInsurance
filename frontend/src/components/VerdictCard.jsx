@@ -25,6 +25,7 @@ export default function VerdictCard({ data, modifiers = [], claims = [] }) {
   const favorableModifiers = modifiers.filter(m => m.rating.includes('FAVOURABLE') && !m.rating.includes('UNFAVOURABLE'));
   const unfavorableModifiers = modifiers.filter(m => m.rating.includes('UNFAVOURABLE'));
   const neutralModifiers = modifiers.filter(m => m.rating === 'AVERAGE' || m.rating === 'NEUTRAL');
+  const totalModifiers = modifiers.length || 15;
 
   const riskDrivers = favorableModifiers.slice(0, 3);
   const keyConcerns = unfavorableModifiers.slice(0, 3);
@@ -128,13 +129,13 @@ export default function VerdictCard({ data, modifiers = [], claims = [] }) {
           <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: '12px', border: '1px solid #E2E8F0', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ color: '#64748B', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '800' }}>Modifier Distribution</div>
-              <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#0F172A' }}>13 Total</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#0F172A' }}>{totalModifiers} Total</div>
             </div>
             
             <div style={{ display: 'flex', width: '100%', height: '10px', borderRadius: '5px', overflow: 'hidden', marginBottom: '20px', background: '#F1F5F9' }}>
-              <div style={{ width: `${(favorableModifiers.length/13)*100}%`, background: '#10B981', transition: 'width 1s ease-in-out' }}></div>
-              <div style={{ width: `${(neutralModifiers.length/13)*100}%`, background: '#CBD5E1', transition: 'width 1s ease-in-out' }}></div>
-              <div style={{ width: `${(unfavorableModifiers.length/13)*100}%`, background: '#EF4444', transition: 'width 1s ease-in-out' }}></div>
+              <div style={{ width: `${(favorableModifiers.length/totalModifiers)*100}%`, background: '#10B981', transition: 'width 1s ease-in-out' }}></div>
+              <div style={{ width: `${(neutralModifiers.length/totalModifiers)*100}%`, background: '#CBD5E1', transition: 'width 1s ease-in-out' }}></div>
+              <div style={{ width: `${(unfavorableModifiers.length/totalModifiers)*100}%`, background: '#EF4444', transition: 'width 1s ease-in-out' }}></div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -337,7 +338,7 @@ export default function VerdictCard({ data, modifiers = [], claims = [] }) {
               color: 'var(--text-secondary)',
               lineHeight: '1.6'
             }}>
-              <div><strong style={{ color: 'var(--text-primary)' }}>Risk Category:</strong> The overall cyber risk tier derived from averaging the 13 actuarial modifier ratings.</div>
+              <div><strong style={{ color: 'var(--text-primary)' }}>Risk Category:</strong> The overall cyber risk tier derived from averaging the {totalModifiers} actuarial modifier ratings.</div>
               <div><strong style={{ color: 'var(--text-primary)' }}>Evidence Confidence Score:</strong> A measure of data integrity based on the Fact Checker's corroboration of claims against raw scraped evidence.</div>
               <div><strong style={{ color: 'var(--text-primary)' }}>Human Escalation:</strong> Activated when confidence falls below acceptable thresholds, or when strict discrepancies (e.g., entity mismatch) are detected.</div>
               <div style={{ marginTop: '8px', borderTop: '1px dashed rgba(255,255,255,0.2)', paddingTop: '12px' }}>

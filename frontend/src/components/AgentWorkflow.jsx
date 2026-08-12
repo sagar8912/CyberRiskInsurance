@@ -336,7 +336,7 @@ export default function AgentWorkflow({ isLoading, hasRun, currentStep = 0, coll
             {internalStepId === 3 && "Collect evidence from SEC, Wikipedia, Wikidata, DB, and website sources."}
             {internalStepId === 4 && "Coordinator Agent is aggregating and deduplicating raw scraped data into a single normalized entity profile."}
             {internalStepId === 5 && "Verifies claims against collected evidence."}
-            {internalStepId === 6 && "Underwriter Agent is executing 13 actuarial risk models against the fact-checked profile to generate score modifiers."}
+            {internalStepId === 6 && `Underwriter Agent is executing actuarial risk models against the fact-checked profile to generate score modifiers.`}
             {internalStepId === 7 && "Execution complete. Final Underwriting Verdict has been rendered based on aggregated agent consensus."}
           </div>
         </div>

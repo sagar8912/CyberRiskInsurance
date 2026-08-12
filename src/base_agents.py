@@ -137,6 +137,19 @@ class BaseAgent:
             if not env_azure_endpoint:
                 raise ValueError("Azure OpenAI detected but no endpoint configured. Set AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_BASE or OPENAI_API_BASE.")
             model_name = env_deployment_name
+            groq_models = [model_name]
+        elif openai_key:
+            model_name = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+            groq_models = [model_name]
+        elif groq_key:
+            model_name = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+            base_fallbacks = ["llama-3.3-70b-versatile", "llama-3.3-70b-specdec", "llama-3.1-8b-instant", "llama-3.2-3b-preview"]
+            groq_models = [model_name] + [m for m in base_fallbacks if m != model_name]
+        else:
+            raise ValueError(
+                "No LLM credentials configured. Please set AZURE_OPENAI_API_KEY, OPENAI_API_KEY, or GROQ_API_KEY."
+            )
+
         last_exception = None
         for m_name in groq_models:
             try:

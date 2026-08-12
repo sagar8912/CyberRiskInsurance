@@ -373,7 +373,6 @@ def build_cyber_risk_rating_graph(enable_cache: bool = True):
     g.add_node("dnb", with_step(dnb_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("domain", with_step(domain_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("responses", with_step(responses_node, 3, "collector_node"), retry_policy=api_retry)
-    g.add_node("opencorporates", with_step(opencorporates_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("gdelt", with_step(gdelt_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("courtlistener", with_step(courtlistener_node, 3, "collector_node"), retry_policy=api_retry)
     g.add_node("ssllabs", with_step(ssllabs_node, 3, "collector_node"), retry_policy=api_retry)
