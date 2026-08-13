@@ -1,4 +1,4 @@
-import { modifierMetadata } from './ModifierTable';
+import { modifierMetadata } from './modifierMetadata';
 import { extractEvidenceLinks } from './EvidenceSources';
 
 export const getReportHtml = (data, companyName, verdictData) => {

@@ -11,6 +11,7 @@ import AgentResultCards from './components/AgentResultCards';
 import LiveAgentTelemetry from './components/LiveAgentTelemetry';
 import AdminLogsPanel from './components/AdminLogsPanel';
 import BatchAnalysisModal from './components/BatchAnalysisModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import './components.css';
 
@@ -312,7 +313,9 @@ function App() {
         )}
       </div>
 
-      <BatchAnalysisModal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} />
+      <ErrorBoundary>
+        <BatchAnalysisModal isOpen={isBatchModalOpen} onClose={() => setIsBatchModalOpen(false)} />
+      </ErrorBoundary>
 
       {/* Toast Notifications */}
       <div className="toast-container">

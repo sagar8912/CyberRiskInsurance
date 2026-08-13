@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+﻿import { useState, useMemo, useCallback } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   ShieldCheck, ShieldAlert, Shield, AlertTriangle, HelpCircle,
@@ -6,13 +6,13 @@ import {
   TrendingDown, TrendingUp, Activity, Database, Users, CheckCircle, XCircle, Clock, Square
 } from 'lucide-react';
 
-// ─── Color mapping — handles both American and British spellings from backend ──
+// â”€â”€â”€ Color mapping â€” handles both American and British spellings from backend â”€â”€
 
 
 
 function resolveRatingStyle(rating = '') {
   const up = rating.trim().toUpperCase();
-  // Partial Unfavorable — must check before generic unfavorable
+  // Partial Unfavorable â€” must check before generic unfavorable
   if ((up.includes('PARTIAL') && (up.includes('UNFAVOUR') || up.includes('UNFAVOR')))) {
     return { color: '#EA580C', bg: '#FFF7ED', border: '#FED7AA' };
   }
@@ -111,7 +111,7 @@ const VERDICT_CONFIG = {
 const VERDICT_BUCKETS = Object.keys(VERDICT_CONFIG);
 const RISK_SORT_ORDER  = { 'Unfavorable': 0, 'Partially Unfavorable': 1, 'Average': 2, 'Partially Favorable': 3, 'Favorable': 4, 'Unknown': 5 };
 
-// ─── Data accessors — match actual API response shape ────────────────────────
+// â”€â”€â”€ Data accessors â€” match actual API response shape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // API response keys (from api.py format_analysis_response):
 //   final_verdict.riskCategory      = verdict string (NOT .verdict)
 //   final_verdict.underwritingScore = confidence as "72%" (NOT .confidence_score)
@@ -135,7 +135,7 @@ const getField = (val) => {
   return (s === '' || s === 'N/A' || s === 'n/a' || s === 'None' || s === 'null' || s === 'Not Available' || s === 'undefined') ? null : s;
 };
 
-// ─── Shared sub-components ────────────────────────────────────────────────────
+// â”€â”€â”€ Shared sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function RatingBadge({ verdict }) {
   const { color, bg } = resolveRatingStyle(verdict);
@@ -182,7 +182,7 @@ function CardHeader({ title, subtitle, action }) {
   );
 }
 
-// ─── Pie chart tooltip ────────────────────────────────────────────────────────
+// â”€â”€â”€ Pie chart tooltip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function PieTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -199,7 +199,7 @@ function PieTooltip({ active, payload }) {
   );
 }
 
-// ─── Modifier Heat Map Row ────────────────────────────────────────────────────
+// â”€â”€â”€ Modifier Heat Map Row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ModifierHeatRow({ mod, index }) {
   const [expanded, setExpanded] = useState(false);
@@ -396,7 +396,7 @@ function ModifierHeatRow({ mod, index }) {
 }
 
 
-// ─── Portfolio Heat Map ───────────────────────────────────────────────────────
+// â”€â”€â”€ Portfolio Heat Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function PortfolioHeatMap({ companies, onSelectCompany, selectedCompanyId, onHeatmapClick }) {
   const [hoveredMod, setHoveredMod] = useState(null);
@@ -494,12 +494,12 @@ function PortfolioHeatMap({ companies, onSelectCompany, selectedCompanyId, onHea
 }
 
 
-// ─── Main Dashboard ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompanyId, onCompanySelect }) {
+export default function PortfolioDashboard({ rows, onHeatmapClick }) {
   const [selectedCategory, setSelectedCategory]   = useState(null);
-  // ⚠️  CRITICAL: use null (not 0) as sentinel — row id can be 0 (first row)
-  // selectedCompanyId managed by parent
+  // âš ï¸  CRITICAL: use null (not 0) as sentinel â€” row id can be 0 (first row)
+  const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [searchQuery, setSearchQuery]             = useState('');
   const [sortBy, setSortBy]                       = useState('risk');
 
@@ -510,14 +510,14 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
   const totalUploaded = rows.length;
   const totalCompanies = completedRows.length;
 
-  // Row confidence — stored as parsed number on the row from BatchAnalysisModal
+  // Row confidence â€” stored as parsed number on the row from BatchAnalysisModal
   const rowConfidence = useCallback((row) => {
     if (row.confidence != null) return row.confidence;
     // fallback: try to parse from rawData directly
     return parseConf(getFinalVerdict(row).underwritingScore ?? getFinalVerdict(row).confidence_score);
   }, []);
 
-  // Distribution — use normalised bucket names
+  // Distribution â€” use normalised bucket names
   const distribution = useMemo(() => {
     const counts = {};
     VERDICT_BUCKETS.forEach(v => { counts[v] = 0; });
@@ -536,7 +536,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
   const pieData    = useMemo(() => distribution.filter(d => d.value > 0), [distribution]);
   const allUnknown = useMemo(() => pieData.length === 1 && pieData[0].name === 'Unknown', [pieData]);
 
-  // Company display list — search across name, domain, industry
+  // Company display list â€” search across name, domain, industry
   const displayList = useMemo(() => {
     let list = selectedCategory
       ? completedRows.filter(r => normaliseVerdict(r.verdict) === selectedCategory)
@@ -562,12 +562,12 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
     return sorted;
   }, [selectedCategory, completedRows, searchQuery, sortBy, rowConfidence]);
 
-  // ⚠️  BUG FIX: `selectedCompanyId !== null` — because id can be 0 (falsy)
+  // âš ï¸  BUG FIX: `selectedCompanyId !== null` â€” because id can be 0 (falsy)
   const selectedCompany = useMemo(() =>
     selectedCompanyId !== null ? completedRows.find(r => r.id === selectedCompanyId) ?? null : null
   , [selectedCompanyId, completedRows]);
 
-  // Portfolio Insights — use corrected accessors
+  // Portfolio Insights â€” use corrected accessors
   const insights = useMemo(() => {
     const highRisk   = completedRows.filter(r => { const b = normaliseVerdict(r.verdict); return b === 'Unfavorable' || b === 'Partially Unfavorable'; })
       .sort((a, b) => (RISK_SORT_ORDER[normaliseVerdict(a.verdict)] ?? 5) - (RISK_SORT_ORDER[normaliseVerdict(b.verdict)] ?? 5));
@@ -589,8 +589,8 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
 
   if (totalCompanies === 0 && failedCount === 0) return null;
 
-  const clearFilter     = () => { setSelectedCategory(null); onCompanySelect(null); setSearchQuery(''); };
-  const selectCategory  = (name) => { setSelectedCategory(name); onCompanySelect(null); setSearchQuery(''); };
+  const clearFilter     = () => { setSelectedCategory(null); setSelectedCompanyId(null); setSearchQuery(''); };
+  const selectCategory  = (name) => { setSelectedCategory(name); setSelectedCompanyId(null); setSearchQuery(''); };
 
   const renderPieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
     if (percent < 0.06) return null;
@@ -604,12 +604,12 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
     );
   };
 
-  // ── RENDER ─────────────────────────────────────────────────────────────────
+  // â”€â”€ RENDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div style={{ marginTop: '36px', borderTop: '2px solid #E8EDF2', paddingTop: '28px' }}>
 
-      {/* ── Dashboard Header ──────────────────────────────────────────────── */}
+      {/* â”€â”€ Dashboard Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
@@ -647,7 +647,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
         )}
       </div>
 
-      {/* ── Demo Risk Alert Banner ── */}
+      {/* â”€â”€ Demo Risk Alert Banner â”€â”€ */}
       {(totalCompanies > 0 && (insights.highRisk.length / totalCompanies) > 0.2) && (
         <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '14px 18px', marginBottom: '24px', display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
           <AlertTriangle size={20} color="#DC2626" style={{ marginTop: '2px' }} />
@@ -670,15 +670,15 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
         </div>
       ) : (
         <>
-          {/* ── 0. Portfolio Heat Map ────────────────────────────────────────── */}
+          {/* â”€â”€ 0. Portfolio Heat Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <PortfolioHeatMap 
             companies={completedRows} 
             selectedCompanyId={selectedCompanyId} 
-            onSelectCompany={onCompanySelect} 
+            onSelectCompany={setSelectedCompanyId} 
             onHeatmapClick={onHeatmapClick}
           />
           
-          {/* ── 1. Summary Cards ────────────────────────────────────────────── */}
+          {/* â”€â”€ 1. Summary Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '20px' }}>
 
             {/* Total */}
@@ -736,7 +736,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
               })}
           </div>
 
-          {/* ── 2. Donut + 3. Company List ──────────────────────────────────── */}
+          {/* â”€â”€ 2. Donut + 3. Company List â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <div style={{ display: 'grid', gridTemplateColumns: '270px 1fr', gap: '14px', marginBottom: '16px', alignItems: 'start' }}>
 
             {/* Donut */}
@@ -809,7 +809,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
             <Card>
               <CardHeader
                 title={selectedCategory ? selectedCategory : 'All Companies'}
-                subtitle={`${displayList.length} ${displayList.length === 1 ? 'company' : 'companies'} · click to inspect`}
+                subtitle={`${displayList.length} ${displayList.length === 1 ? 'company' : 'companies'} Â· click to inspect`}
               />
               <div style={{ padding: '9px 12px', borderBottom: '1px solid #F1F5F9', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: '180px', display: 'flex', alignItems: 'center', gap: '6px', background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: '6px', padding: '5px 10px' }}>
@@ -817,12 +817,12 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                   <input
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    placeholder="Search name, domain, or industry…"
+                    placeholder="Search name, domain, or industryâ€¦"
                     style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '0.81rem', color: '#334155', width: '100%' }}
                   />
                 </div>
                 <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                  {[['risk', 'Highest Risk'], ['low', 'Lowest Risk'], ['name', 'A–Z'], ['conf', 'Confidence']].map(([val, label]) => (
+                  {[['risk', 'Highest Risk'], ['low', 'Lowest Risk'], ['name', 'Aâ€“Z'], ['conf', 'Confidence']].map(([val, label]) => (
                     <button key={val} onClick={() => setSortBy(val)} style={{
                       padding: '5px 9px', borderRadius: '5px', fontSize: '0.72rem', fontWeight: '600', cursor: 'pointer',
                       background: sortBy === val ? '#0F172A' : '#F1F5F9',
@@ -857,7 +857,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                   return (
                     <button
                       key={company.id}
-                      onClick={() => onCompanySelect(company.id)}
+                      onClick={() => setSelectedCompanyId(company.id)}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
                         padding: '10px 12px',
@@ -876,8 +876,8 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                         </div>
                         <div style={{ fontSize: '0.73rem', color: '#94A3B8', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {company.domain}
-                          {country  && <> · {country}</>}
-                          {industry && <> · {industry}</>}
+                          {country  && <> Â· {country}</>}
+                          {industry && <> Â· {industry}</>}
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '3px', flexShrink: 0 }}>
@@ -897,7 +897,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
             </Card>
           </div>
 
-          {/* ── 4. Company Details + 5. Modifier Heat Map ────────────────────── */}
+          {/* â”€â”€ 4. Company Details + 5. Modifier Heat Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           {selectedCompany && (() => {
             const rProfile  = getReconciledProfile(selectedCompany);
             const wiki      = getWikidata(selectedCompany);
@@ -1036,7 +1036,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                 <Card>
                   <CardHeader
                     title="Modifier Heat Map"
-                    subtitle={modifiers.length > 0 ? `${modifiers.length} modifiers · click to expand evidence & reasoning` : undefined}
+                    subtitle={modifiers.length > 0 ? `${modifiers.length} modifiers Â· click to expand evidence & reasoning` : undefined}
                   />
                   {modifiers.length === 0 ? (
                     <div style={{ padding: '36px 24px', textAlign: 'center', color: '#64748B', transition: 'all 0.3s' }}>
@@ -1056,7 +1056,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
             );
           })()}
 
-          {/* ── 6. Portfolio Insights ──────────────────────────────────────────── */}
+          {/* â”€â”€ 6. Portfolio Insights â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
           <Card>
             <CardHeader title="Portfolio Insights" subtitle="Risk intelligence summary for underwriter review" />
             <div style={{ padding: '14px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
@@ -1068,7 +1068,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                   <span style={{ fontSize: '0.67rem', fontWeight: '700', color: '#0284C7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Avg Confidence</span>
                 </div>
                 <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#0F172A', lineHeight: 1 }}>
-                  {insights.avgConf ? `${insights.avgConf}%` : '—'}
+                  {insights.avgConf ? `${insights.avgConf}%` : 'â€”'}
                 </div>
                 <div style={{ fontSize: '0.7rem', color: '#64748B', marginTop: '4px' }}>across {totalCompanies} companies</div>
               </div>
@@ -1085,7 +1085,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     {insights.highRisk.slice(0, 4).map(r => (
                       <button key={r.id}
-                        onClick={() => { onCompanySelect(r.id); setSelectedCategory(normaliseVerdict(r.verdict)); }}
+                        onClick={() => { setSelectedCompanyId(r.id); setSelectedCategory(normaliseVerdict(r.verdict)); }}
                         style={{ background: 'none', border: 'none', padding: '2px 0', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', color: '#991B1B', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: '5px' }}
                       >
                         <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#DC2626', flexShrink: 0 }} />
@@ -1109,7 +1109,7 @@ export default function PortfolioDashboard({ rows, onHeatmapClick, selectedCompa
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                     {insights.lowRisk.slice(0, 4).map(r => (
                       <button key={r.id}
-                        onClick={() => { onCompanySelect(r.id); setSelectedCategory(normaliseVerdict(r.verdict)); }}
+                        onClick={() => { setSelectedCompanyId(r.id); setSelectedCategory(normaliseVerdict(r.verdict)); }}
                         style={{ background: 'none', border: 'none', padding: '2px 0', textAlign: 'left', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600', color: '#166534', lineHeight: 1.3, display: 'flex', alignItems: 'center', gap: '5px' }}
                       >
                         <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#16A34A', flexShrink: 0 }} />

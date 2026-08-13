@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { UploadCloud, X, Play, FileText, AlertTriangle, Loader2, Download, Square, Edit2, Trash2, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, FileOutput, Printer } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 import AgentResultCards from './AgentResultCards';
 import ReconciledProfile from './ReconciledProfile';
 import VerdictCard from './VerdictCard';
+import ModifierTable from './ModifierTable';
 import { downloadReportHtml, printReportPdf } from './EvidenceReportGenerator';
 import PortfolioDashboard from './PortfolioDashboard';
 
@@ -25,14 +26,14 @@ function normalizeDomain(d) {
   return clean;
 }
 
-// ─── Field mapping helpers ────────────────────────────────────────────────────
+// â”€â”€â”€ Field mapping helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Backend API returns:
-//   final_verdict.riskCategory      → normalised verdict string
-//   final_verdict.underwritingScore → confidence as "72%" string
-//   reconciled_profile.revenue      → flat string e.g. "$1,234,567" or "Not Available"
-//   reconciled_profile.customerType → customer type string
-//   wikidata_output.country         → country string
-//   wikidata_output.industry        → industry string
+//   final_verdict.riskCategory      â†’ normalised verdict string
+//   final_verdict.underwritingScore â†’ confidence as "72%" string
+//   reconciled_profile.revenue      â†’ flat string e.g. "$1,234,567" or "Not Available"
+//   reconciled_profile.customerType â†’ customer type string
+//   wikidata_output.country         â†’ country string
+//   wikidata_output.industry        â†’ industry string
 
 function parseConfidence(val) {
   if (val == null) return null;
@@ -88,10 +89,9 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
   const [editDomainValue, setEditDomainValue] = useState('');
 
   // Detail View State
-  const [currentStep, setCurrentStep] = useState(1); // 'upload', 'overview', 'results', 'company_detail', 'modifier_detail'
+  const [currentView, setCurrentView] = useState('upload'); // 'upload', 'overview', 'results', 'company_detail', 'modifier_detail'
   const [viewingRowId, setViewingRowId] = useState(null);
   const [autoExpandIndex, setAutoExpandIndex] = useState(null);
-  const hasAutoNavigated = useRef(false);
 
   // Ref for cancellation
   const cancelRef = useRef(false);
@@ -100,11 +100,10 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
 
   // Sync state when batch finishes
   useEffect(() => {
-    if (isFinished && currentStep === 1 && !hasAutoNavigated.current) {
-      hasAutoNavigated.current = true;
-      setCurrentStep(2);
+    if (isFinished && currentView === 'upload') {
+      setCurrentView('overview');
     }
-  }, [isFinished, currentStep]);
+  }, [isFinished, currentView]);
 
   if (!isOpen) return null;
 
@@ -119,12 +118,10 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
     setNeedsMapping(false);
     setSelectedCompanyCol('');
     setSelectedDomainCol('');
-    setCurrentStep(1);
+    setCurrentView('upload');
     setViewingRowId(null);
     setAutoExpandIndex(null);
-    if (hasAutoNavigated?.current !== undefined) {
-      hasAutoNavigated.current = false;
-    }
+    setViewingModifierIndex(0);
     cancelRef.current = false;
   };
 
@@ -495,7 +492,7 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
   const handleHeatmapClick = (companyId, modifierIndex) => {
     setViewingRowId(companyId);
     setAutoExpandIndex(modifierIndex);
-    // Keep user on Step 2
+    setCurrentView('modifier_detail');
   };
 
   const handleCompanyChange = (direction) => {
@@ -600,8 +597,8 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
                 <td style={{ padding: '12px', color: '#475569' }}>{summary.industry || '-'}</td>
                 <td style={{ padding: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {row.status === 'Completed' && (
-                      <button onClick={() => { setViewingRowId(row.id); setCurrentStep(3); }} style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#0F172A', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '500' }}>View Full Result</button>
+                    {row.status === 'Completed' && row.rawData && (
+                      <button onClick={() => { setViewingRowId(row.id); setCurrentView('company_detail'); }} style={{ background: '#F1F5F9', border: '1px solid #E2E8F0', color: '#0F172A', padding: '4px 8px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '500' }}>View Full Result</button>
                     )}
                     {!isProcessing && !isFinished && (
                       <button onClick={() => removeRow(row.id)} style={{ background: 'transparent', border: 'none', color: '#EF4444', cursor: 'pointer', padding: '4px', marginLeft: 'auto' }} title="Remove row">
@@ -642,18 +639,112 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
     );
   };
 
-  const handleNext = () => {
-    if (currentStep < 4) setCurrentStep(s => s + 1);
+  const renderModifierDetail = () => {
+    const row = rows.find(r => r.id === viewingRowId);
+    if (!row || !row.rawData) return null;
+    
+    const activeModifiers = row.rawData.modifiers || [];
+    const activeVerdict = row.rawData.final_verdict;
+    const targetEntity = row.rawData.target_entity;
+
+    if (activeModifiers.length === 0) return <div>No modifiers available</div>;
+
+    return (
+      <div style={{ padding: '16px' }}>
+        <ModifierTable 
+          data={activeModifiers} 
+          isAdminMode={false} 
+          verdictData={{ target_entity: targetEntity, final_verdict: activeVerdict }} 
+          autoExpandIndex={autoExpandIndex}
+        />
+      </div>
+    );
   };
 
+  // -------------------------------------------------------------
+  // FOOTER NAVIGATION HANDLERS
+  // -------------------------------------------------------------
   const handleBack = () => {
-    if (currentStep > 1) setCurrentStep(s => s - 1);
+    if (currentView === 'results') {
+      setCurrentView('overview');
+    } else if (currentView === 'overview') {
+      setCurrentView('results');
+    } else if (currentView === 'company_detail') {
+      setCurrentView('overview');
+    } else if (currentView === 'modifier_detail') {
+      setCurrentView('company_detail');
+    }
   };
 
-  const isBackDisabled = currentStep === 1;
-  const isNextDisabled = currentStep === 4 || (currentStep === 1 && !isFinished);
+  const handleNext = () => {
+    if (currentView === 'results') {
+      setCurrentView('overview');
+    } else if (currentView === 'overview') {
+      if (completedCompanies.length > 0) {
+        setViewingRowId(completedCompanies[0].id);
+        setCurrentView('company_detail');
+      }
+    } else if (currentView === 'company_detail') {
+      setCurrentView('modifier_detail');
+    } else if (currentView === 'modifier_detail') {
+      const currentIndex = completedCompanies.findIndex(r => r.id === viewingRowId);
+      if (currentIndex !== -1 && currentIndex + 1 < completedCompanies.length) {
+        setViewingRowId(completedCompanies[currentIndex + 1].id);
+        setCurrentView('company_detail');
+      }
+    }
+  };
+
+  const isBackDisabled = currentView === 'upload' || currentView === 'results';
+  
+  let isNextDisabled = false;
+  if (currentView === 'upload') isNextDisabled = true;
+  if (currentView === 'results' && completedCompanies.length === 0) isNextDisabled = true;
+  if (currentView === 'modifier_detail') {
+    const currentIndex = completedCompanies.findIndex(r => r.id === viewingRowId);
+    if (currentIndex === -1 || currentIndex >= completedCompanies.length - 1) isNextDisabled = true;
+  }
 
   const renderNavFooter = () => {
+    if (currentView === 'upload') {
+      return (
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #E2E8F0', background: '#F8FAFC', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          {!isProcessing && (
+            <button onClick={handleClose} style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '8px 16px', borderRadius: '6px', color: '#475569', fontWeight: '600', cursor: 'pointer' }}>
+              {isFinished ? 'Close' : 'Cancel'}
+            </button>
+          )}
+          
+          {file && !needsMapping && rows.length > 0 && !isFinished && (
+            isProcessing ? (
+              <button 
+                onClick={cancelBatch}
+                style={{ 
+                  background: '#EF4444', color: '#FFF', border: 'none', padding: '8px 16px', borderRadius: '6px', 
+                  fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
+                }}
+              >
+                <Square size={16} /> Stop Batch
+              </button>
+            ) : (
+              <button 
+                onClick={runBatch}
+                disabled={validRowCount === 0}
+                style={{ 
+                  background: validRowCount > 0 ? 'var(--accent-orange)' : '#94A3B8', 
+                  color: '#FFF', border: 'none', padding: '8px 16px', borderRadius: '6px', 
+                  fontWeight: '600', cursor: validRowCount > 0 ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', gap: '8px'
+                }}
+              >
+                <Play size={16} /> Run Batch Analysis ({validRowCount})
+              </button>
+            )
+          )}
+        </div>
+      );
+    }
+
     const viewingRow = completedCompanies.find(r => r.id === viewingRowId);
     const cIndex = completedCompanies.findIndex(r => r.id === viewingRowId);
 
@@ -688,7 +779,7 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
 
         {/* Center: Context Indicator */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          {(currentStep === 3 || currentStep === 4) && viewingRow && (
+          {(currentView === 'company_detail' || currentView === 'modifier_detail') && viewingRow && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#F8FAFC', padding: '6px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
               <button onClick={() => handleCompanyChange(-1)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', color: '#64748B' }}>
                 <ChevronLeft size={16} />
@@ -702,11 +793,13 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
               </button>
             </div>
           )}
+
+
         </div>
 
         {/* Right Side: Actions */}
         <div style={{ display: 'flex', gap: '12px' }}>
-          {viewingRow?.rawData && (currentStep === 3 || currentStep === 4) && (
+          {viewingRow?.rawData && (
             <>
               <button onClick={() => downloadReportHtml(viewingRow.rawData.modifiers, viewingRow.rawData.target_entity?.name, viewingRow.rawData.final_verdict)} style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '8px', borderRadius: '6px', color: '#475569', cursor: 'pointer' }} title="Download HTML">
                 <FileOutput size={16} />
@@ -716,39 +809,9 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
               </button>
             </>
           )}
-
-          {currentStep === 1 && file && !needsMapping && rows.length > 0 && !isFinished && (
-            isProcessing ? (
-              <button 
-                onClick={cancelBatch}
-                style={{ 
-                  background: '#EF4444', color: '#FFF', border: 'none', padding: '8px 16px', borderRadius: '6px', 
-                  fontWeight: '600', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px'
-                }}
-              >
-                <Square size={16} /> Stop Batch
-              </button>
-            ) : (
-              <button 
-                onClick={runBatch}
-                disabled={validRowCount === 0}
-                style={{ 
-                  background: validRowCount > 0 ? 'var(--accent-orange)' : '#94A3B8', 
-                  color: '#FFF', border: 'none', padding: '8px 16px', borderRadius: '6px', 
-                  fontWeight: '600', cursor: validRowCount > 0 ? 'pointer' : 'not-allowed',
-                  display: 'flex', alignItems: 'center', gap: '8px'
-                }}
-              >
-                <Play size={16} /> Run Batch Analysis ({validRowCount})
-              </button>
-            )
-          )}
-
-          {(!isProcessing || currentStep !== 1) && (
-            <button onClick={handleClose} style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '8px 16px', borderRadius: '6px', color: '#475569', fontWeight: '600', cursor: 'pointer' }}>
-              {currentStep === 1 && !isFinished ? 'Cancel' : 'Close'}
-            </button>
-          )}
+          <button onClick={handleClose} style={{ background: 'transparent', border: '1px solid #CBD5E1', padding: '8px 16px', borderRadius: '6px', color: '#475569', fontWeight: '600', cursor: 'pointer' }}>
+            Close
+          </button>
         </div>
       </div>
     );
@@ -766,12 +829,14 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#FFFFFF', zIndex: 10 }}>
           <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', color: '#0F172A' }}>
             <UploadCloud size={20} color="var(--accent-orange)" /> Batch Analysis
-            <span style={{ fontSize: '0.8rem', color: '#64748B', marginLeft: '12px', fontWeight: '500', background: '#F1F5F9', padding: '4px 8px', borderRadius: '4px' }}>
-              {currentStep === 1 && 'Step 1: Batch Results'}
-              {currentStep === 2 && 'Step 2: Portfolio Overview'}
-              {currentStep === 3 && 'Step 3: Company Detail'}
-              {currentStep === 4 && 'Step 4: Final Result'}
-            </span>
+            {currentView !== 'upload' && (
+              <span style={{ fontSize: '0.8rem', color: '#64748B', marginLeft: '12px', fontWeight: '500', background: '#F1F5F9', padding: '4px 8px', borderRadius: '4px' }}>
+                {currentView === 'overview' && 'Step 1: Portfolio Overview'}
+                {currentView === 'results' && 'Step 2: Company Results'}
+                {currentView === 'company_detail' && 'Step 3: Company Detail'}
+                {currentView === 'modifier_detail' && 'Step 4: Modifier Detail'}
+              </span>
+            )}
           </h2>
           <button onClick={handleClose} disabled={isProcessing} style={{ background: 'transparent', border: 'none', cursor: isProcessing ? 'not-allowed' : 'pointer', padding: '4px', display: 'flex', alignItems: 'center', color: '#64748B', opacity: isProcessing ? 0.5 : 1 }}>
             <X size={20} />
@@ -779,9 +844,9 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', background: currentStep === 1 ? '#FFFFFF' : '#F8FAFC', position: 'relative' }}>
+        <div style={{ flex: 1, overflowY: 'auto', background: currentView === 'upload' || currentView === 'results' ? '#FFFFFF' : '#F8FAFC', position: 'relative' }}>
           
-          {currentStep === 1 && (
+          {currentView === 'upload' && (
             <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px', minHeight: '100%' }}>
               {!file && (
                 <div style={{ border: '2px dashed #CBD5E1', borderRadius: '8px', padding: '48px', textAlign: 'center', background: '#F8FAFC', cursor: 'pointer' }}
@@ -846,29 +911,27 @@ export default function BatchAnalysisModal({ isOpen, onClose }) {
             </div>
           )}
 
-          {currentStep === 2 && (
-            <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '32px' }}>
-              <PortfolioDashboard rows={rows} onHeatmapClick={handleHeatmapClick} selectedCompanyId={viewingRowId} onCompanySelect={setViewingRowId} />
-              
-
+          {currentView === 'overview' && (
+            <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+              <PortfolioDashboard rows={rows} onHeatmapClick={handleHeatmapClick} />
             </div>
           )}
 
-          {currentStep === 3 && (
+          {currentView === 'results' && (
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+              {renderUploadTable()}
+            </div>
+          )}
+
+          {currentView === 'company_detail' && (
             <div style={{ padding: '8px 24px 24px', maxWidth: '1200px', margin: '0 auto' }}>
               {renderCompanyDetail()}
             </div>
           )}
 
-          {currentStep === 4 && (
-            <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-              {viewingRowId !== null && rows.find(r => r.id === viewingRowId)?.rawData?.final_verdict && (
-                <VerdictCard 
-                  data={rows.find(r => r.id === viewingRowId).rawData.final_verdict} 
-                  modifiers={rows.find(r => r.id === viewingRowId).rawData.modifiers} 
-                  claims={rows.find(r => r.id === viewingRowId).rawData.fact_checker_claims} 
-                />
-              )}
+          {currentView === 'modifier_detail' && (
+            <div style={{ padding: '8px 24px 24px', maxWidth: '1200px', margin: '0 auto' }}>
+              {renderModifierDetail()}
             </div>
           )}
 
